@@ -13,38 +13,43 @@ OTOOL :=				ft_otool
 CC :=					gcc
 
 #	Flags
-FLAGS =					-Wall -Wextra -Wcast-align -Wconversion -Werror 
+FLAGS =					-Wall -Wextra -Wcast-align -Wconversion -Werror
 ifeq ($(OS), Darwin)
 	THREADS :=			$(shell sysctl -n hw.ncpu)
 else
 	THREADS :=			4
 endif
+HEADERS :=				-I $(LIBFTDIR)/include
 
 FAST :=					-j$(THREADS)
 O_FLAG :=				-O3
 
 #	Directories
+LIBFTDIR :=				./libft/
 OBJDIR :=				./build/
-SRC_DIR :=				./src/
-
-SRC +=					free.c malloc.c show.c utils.c
+SRCDIR :=				./src/
 
 #	Sources
-OBJECTS =				$(patsubst %.c,$(OBJDIR)%.o,$(SRCS))
-SRCS +=					$(SRC)
+NM_SRCS +=				nm.c
+OTOOL_SRCS +=			otool.c
+OBJECTS +=				$(patsubst %.c,$(OBJDIR)%.o,$(NM_SRCS))
+OBJECTS +=				$(patsubst %.c,$(OBJDIR)%.o,$(OTOOL_SRCS))
 
-vpath %.c $(SRC_DIR)
+vpath %.c $(SRCDIR)
 
 #################
 ##    RULES    ##
 #################
 
-all: $(NAME)
+all: libft $(NM) $(OTOOL)
 
-$(NAME): $(OBJECTS)
-	@$(CC) $(DYN_FLAG) $(FLAGS)$(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(SRCS))) -o $@
-	@printf  "\033[92m\033[1;32mCompiling -------------> \033[91m$(NAME)\033[0m\033[1;32m:\033[0m%-2s\033[32m[✔]\033[0m\n"
-	@ln -s $@ $(SYMLINK)
+$(NM): $(OBJECTS)
+	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(NM_SRCS))) -L $(LIBFTDIR) -lft -o $@
+	@printf  "\033[92m\033[1;32mCompiling -------------> \033[91m$(NM)\033[0m\033[1;32m:\033[0m%-15s\033[32m[✔]\033[0m\n"
+
+$(OTOOL): $(OBJECTS)
+	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(OTOOL_SRCS))) -L $(LIBFTDIR) -lft -o $@
+	@printf  "\033[92m\033[1;32mCompiling -------------> \033[91m$(OTOOL)\033[0m\033[1;32m:\033[0m%-12s\033[32m[✔]\033[0m\n"
 
 $(OBJECTS): | $(OBJDIR)
 
@@ -52,21 +57,24 @@ $(OBJDIR):
 	@mkdir -p $@
 
 $(OBJDIR)%.o: %.c
-	@printf  "\033[1;92mCompiling $(NAME)\033[0m %-17s\033[32m[$<]\033[0m\n"
-	@$(CC) $(FLAGS)$(O_FLAG) $(HEADERS) -fpic -c $< -o $@
+	@printf  "\033[1;92mCompiling $(NM)/$(OTOOL)\033[0m %-21s\033[32m[$<]\033[0m\n"
+	@$(CC) $(FLAGS) $(O_FLAG) $(HEADERS) -fpic -c $< -o $@
 	@printf "\033[A\033[2K"
 
 clean:
 	@/bin/rm -rf $(OBJDIR)
-	@printf  "\033[1;32mCleaning object files -> \033[91m$(NAME)\033[0m\033[1;32m:\033[0m%-2s\033[32m[✔]\033[0m\n"
+	@printf  "\033[1;32mCleaning object files -> \033[91m$(NM)/$(OTOOL)\033[0m\033[1;32m:\033[0m%-6s\033[32m[✔]\033[0m\n"
 
 fast:
 	@$(MAKE) --no-print-directory $(FAST)
 
 fclean: clean
-	@/bin/rm -f $(NAME)
-	@/bin/rm -f $(SYMLINK)
-	@printf  "\033[1;32mCleaning binary -------> \033[91m$(NAME)\033[0m\033[1;32m:\033[0m%-2s\033[32m[✔]\033[0m\n"
+	@/bin/rm -f $(NM)
+	@/bin/rm -f $(OTOOL)
+	@printf  "\033[1;32mCleaning binary -------> \033[91m$(NM)/$(OTOOL)\033[0m\033[1;32m:\033[0m%-6s\033[32m[✔]\033[0m\n"
+
+libft:
+	@$(MAKE) fast -C $(LIBFTDIR)
 
 noflags: FLAGS := 
 noflags: re
@@ -75,4 +83,4 @@ re: fclean all
 
 purge: fclean
 
-.PHONY: all clean fast fclean noflags purge re
+.PHONY: all clean fast fclean libft noflags purge re
