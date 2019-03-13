@@ -1,10 +1,11 @@
 #ifndef NMP_H
 # define NMP_H
 
-# include "../libft/include/libft.h"
+# include "ofilep.h"
 
 enum		e_nm_opt {
-	NM_OPT_h
+	OPT_h = (1 << 0),
+	OPT_A = (1 << 8)
 };
 
 #endif /* NMP_H */

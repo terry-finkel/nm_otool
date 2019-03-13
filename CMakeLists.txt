@@ -8,5 +8,8 @@ include_directories(src)
 
 add_executable(nm_otool
         src/nm.c
+        src/nmp.h
+        src/ofilep.h
         src/otool.c
+        src/otoolp.h
         README.md)
