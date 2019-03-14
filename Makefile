@@ -13,7 +13,7 @@ OTOOL :=				ft_otool
 CC :=					gcc
 
 #	Flags
-FLAGS =					-Wall -Wextra -Wcast-align -Wconversion -Werror
+FLAGS =					-Wall -Wextra -Wcast-align -Wconversion -Werror -g3
 ifeq ($(OS), Darwin)
 	THREADS :=			$(shell sysctl -n hw.ncpu)
 else
@@ -22,7 +22,7 @@ endif
 HEADERS :=				-I $(LIBFTDIR)/include
 
 FAST :=					-j$(THREADS)
-O_FLAG :=				-O3
+O_FLAG :=				-O0
 
 #	Directories
 LIBFTDIR :=				./libft/
@@ -31,8 +31,10 @@ SRCDIR :=				./src/
 
 #	Sources
 NM_SRCS +=				nm.c
+OFILE_SRCS +=			ofile.c
 OTOOL_SRCS +=			otool.c
 OBJECTS +=				$(patsubst %.c,$(OBJDIR)%.o,$(NM_SRCS))
+OBJECTS +=				$(patsubst %.c,$(OBJDIR)%.o,$(OFILE_SRCS))
 OBJECTS +=				$(patsubst %.c,$(OBJDIR)%.o,$(OTOOL_SRCS))
 
 vpath %.c $(SRCDIR)
@@ -44,11 +46,11 @@ vpath %.c $(SRCDIR)
 all: libft $(NM) $(OTOOL)
 
 $(NM): $(OBJECTS)
-	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(NM_SRCS))) -L $(LIBFTDIR) -lft -o $@
+	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(OFILE_SRCS))) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(NM_SRCS))) -L $(LIBFTDIR) -lft -o $@
 	@printf  "\033[92m\033[1;32mCompiling -------------> \033[91m$(NM)\033[0m\033[1;32m:\033[0m%-15s\033[32m[✔]\033[0m\n"
 
 $(OTOOL): $(OBJECTS)
-	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(OTOOL_SRCS))) -L $(LIBFTDIR) -lft -o $@
+	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(OFILE_SRCS))) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(OTOOL_SRCS))) -L $(LIBFTDIR) -lft -o $@
 	@printf  "\033[92m\033[1;32mCompiling -------------> \033[91m$(OTOOL)\033[0m\033[1;32m:\033[0m%-12s\033[32m[✔]\033[0m\n"
 
 $(OBJECTS): | $(OBJDIR)

@@ -1,23 +1,6 @@
 #include "nmp.h"
 
 
-void
-process_file (const void *ptr) {
-
-	t_ctx ctx;
-	struct mach_header header = *(struct mach_header *)ptr;
-	ctx.is_64 = (header.magic == MH_MAGIC_64 || header.magic == MH_CIGAM_64);
-	ctx.is_cigam = (header.magic == MH_CIGAM_64 || header.magic == MH_CIGAM);
-
-	ptr = (const void *)((uintptr_t)ptr + (ctx.is_64 ? sizeof(struct mach_header_64) : sizeof(struct mach_header)));
-	for (uint32_t k = 0; k < header.ncmds; k++) {
-
-		const struct segment_command segment = *(struct segment_command *)ptr;
-		printf("%s\n", segment.segname);
-		ptr = (const void *)((uintptr_t)ptr + segment.cmdsize);
-	}
-}
-
 int
 main (int argc, const char *argv[]) {
 
@@ -36,11 +19,11 @@ main (int argc, const char *argv[]) {
 
 	if (argc == 1) argv[argc++] = "a.out";
 
-	for ( ; index < argc; index++) {
+/*	for ( ; index < argc; index++) {
 
 		const char *path = argv[index];
 		const int fd = open(path, O_RDONLY);
-		if (fd == -1) return ft_printerr(EXIT_FAILURE, "ft_nm: %s: error opening file descriptor.\n", path);
+		if (fd == -1) return printerr("ft_nm", path, E_OPEN);
 
 		struct stat buf;
 		if (fstat(fd, &buf)) return ft_printerr(EXIT_FAILURE, "ft_nm: %s: error with fstat.\n", path);
@@ -53,6 +36,6 @@ main (int argc, const char *argv[]) {
 		if (munmap(file, (size_t)buf.st_size)) return ft_printerr(EXIT_FAILURE, "ft_nm: %s: error unmaping file.\n", path);
 		if (close(fd)) return ft_printerr(EXIT_FAILURE, "ft_nm: %s: error closing file descriptor.\n", path);
 	}
-
+*/
 	return EXIT_SUCCESS;
 }

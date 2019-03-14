@@ -13,16 +13,36 @@
 # include <mach-o/loader.h>
 # include "../libft/include/libft.h"
 
-typedef struct						s_ctx {
-	bool 							is_64: 1;
-	bool							is_cigam: 1;
-	union							{
-		struct segment_command		__seg;
-		struct segment_command_64	__seg64;
-	}								u_seg;
-}									t_ctx;
+# define ofile_peek(ofile, offset, peek_size) (offset + peek_size > ofile->size ? NULL : ofile->file + offset)
+# define oswap_32(ofile, item) (ofile->is_cigam ? OSSwapConstInt32(item) : item)
+# define oswap_64(ofile, item) (ofile->is_cigam ? OSSwapConstInt64(item) : item)
 
-# define seg u_seg.__seg
-# define seg64 u_seg.__seg64
+enum 			e_error {
+	E_SUCCESS = 0,
+	E_INVAL,
+	E_MH_HEADER,
+	E_FAILURE = -1
+};
+
+typedef struct	s_ofile {
+	const void *file;
+	bool		is_64: 1;
+	bool		is_cigam: 1;
+	size_t 		ncommand;
+	size_t 		size;
+	int 		(*browser[])(struct s_ofile *, size_t);
+}				t_ofile;
+
+typedef struct	s_magic {
+	uint32_t 	magic;
+	bool		is_64: 1;
+	bool		is_cigam: 1;
+	int 		(*browse_file)(t_ofile *);
+}				t_magic;
+
+# define MAGIC_LEN 4
+
+int 			open_file(const char *path, t_ofile *ofile);
+int				printerr (const char *bin, const char *file, int error);
 
 #endif /* OFILEP_H */
