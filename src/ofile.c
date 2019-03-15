@@ -48,12 +48,11 @@ read_macho_file (t_ofile *ofile, t_meta *meta) {
 	size_t				offset = header_size[ofile->is_64];
 	uint32_t			ncmds = oswap_32(ofile, header->ncmds);
 
-	ofile->arch = NXGetArchInfoFromCpuType(header->cputype, header->cpusubtype)->name;
+	ofile->nxArchInfo = NXGetArchInfoFromCpuType(header->cputype, header->cpusubtype);
 	for (meta->k_command = 0; meta->k_command < ncmds; meta->k_command++) {
 
 		struct load_command *loader = (struct load_command *)ofile_extract(ofile, offset, sizeof(*loader));
-
-		if (loader->cmdsize % (ofile->is_64 ? 8 : 4)) return (meta->errcode = E_INVAL8), EXIT_FAILURE;
+		if (oswap_32(ofile, loader->cmdsize) % (ofile->is_64 ? 8 : 4)) return (meta->errcode = E_INVAL8), EXIT_FAILURE;
 
 		uint32_t command = oswap_32(ofile, loader->cmd);
 

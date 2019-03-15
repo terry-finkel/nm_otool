@@ -5,18 +5,19 @@ static void
 hexdump (t_ofile *ofile, const uint64_t offset, const uint64_t addr, const uint64_t size) {
 
 	uint32_t	*ptr = (uint32_t *)ofile_extract(ofile, offset, size);
-	const bool	byte_dump = ft_strequ(ofile->arch, "i386") || ft_strequ(ofile->arch, "x86-64");
+	const bool	dbyte = (ofile->nxArchInfo == NULL
+			|| (ofile->nxArchInfo->cputype != CPU_TYPE_I386 && ofile->nxArchInfo->cputype != CPU_TYPE_X86_64));
 
 	ft_dstrfpush(ofile->buffer, "Contents of (__TEXT,__text) section\n");
 	for (uint64_t k = 0; k < size; k++) {
 
 		if (k % 16 == 0) ft_dstrfpush(ofile->buffer, "%0*llx\t", ofile->is_64 ? 16 : 8, addr + k);
 
-		if (byte_dump == true) {
-			ft_dstrfpush(ofile->buffer, "%02x ", ((unsigned char *)ptr)[k]);
-		} else {
+		if (dbyte == true) {
 			ft_dstrfpush(ofile->buffer, "%08x ", oswap_32(ofile, *(ptr + k / 4)));
 			k += 3;
+		} else {
+			ft_dstrfpush(ofile->buffer, "%02x ", ((unsigned char *)ptr)[k]);
 		}
 
 		if (k % 16 == 15 || k + 1 == size) ft_dstrfpush(ofile->buffer, "\n");
@@ -28,8 +29,16 @@ segment (t_ofile *ofile, t_meta *meta, size_t offset) {
 
 	struct segment_command	*segment = (struct segment_command *)ofile_extract(ofile, offset, sizeof *segment);
 
+	if (oswap_32(ofile, segment->fileoff) + oswap_32(ofile, segment->filesize) > ofile->size) {
+
+		meta->errcode = E_INVALSEGOFF;
+		meta->command = oswap_32(ofile, segment->cmd);
+		return EXIT_FAILURE;
+	}
+
 	offset += sizeof *segment;
-	for (uint32_t k = 0; k < segment->nsects; k++) {
+	const uint32_t nsects = oswap_32(ofile, segment->nsects);
+	for (uint32_t k = 0; k < nsects; k++) {
 
 		struct section *section = (struct section *)ofile_extract(ofile, offset, sizeof *section);
 		if (ft_strequ(section->segname, "__TEXT") && ft_strequ(section->sectname, "__text")) {
@@ -53,15 +62,16 @@ segment_64 (t_ofile *ofile, t_meta *meta, size_t offset) {
 
 	struct segment_command_64	*segment = (struct segment_command_64 *)ofile_extract(ofile, offset, sizeof *segment);
 
-	if (segment->fileoff + segment->filesize > ofile->size) {
+	if (oswap_64(ofile, segment->fileoff) + oswap_64(ofile, segment->filesize) > ofile->size) {
 
 		meta->errcode = E_INVALSEGOFF;
-		meta->command = segment->cmd;
+		meta->command = oswap_32(ofile, segment->cmd);
 		return EXIT_FAILURE;
 	}
 
 	offset += sizeof *segment;
-	for (uint32_t k = 0; k < segment->nsects; k++) {
+	const uint32_t nsects = oswap_32(ofile, segment->nsects);
+	for (uint32_t k = 0; k < nsects; k++) {
 
 		struct section_64 *section = (struct section_64 *)ofile_extract(ofile, offset, sizeof *section);
 		if (ft_strequ(section->segname, "__TEXT") && ft_strequ(section->sectname, "__text")) {
