@@ -1,15 +1,6 @@
 #ifndef OFILEP_H
 # define OFILEP_H
 
-/* For open. */
-# include <fcntl.h>
-
-/* For mmap and munmap. */
-# include <sys/mman.h>
-
-/* For fstat. */
-# include <sys/stat.h>
-
 # include <mach-o/arch.h>
 # include <mach-o/loader.h>
 # include "../libft/include/libft.h"

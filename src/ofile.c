@@ -1,5 +1,14 @@
 #include "ofilep.h"
 
+/* For open. */
+# include <fcntl.h>
+
+/* For mmap and munmap. */
+# include <sys/mman.h>
+
+/* For fstat. */
+# include <sys/stat.h>
+
 
 static const char		*errors[] = {
 		"truncated or malformed object",

@@ -1,5 +1,10 @@
-#include "nmp.h"
+#include "ofilep.h"
 
+
+enum	e_opts {
+	OPT_h = (1 << 0),
+	OPT_A = (1 << 8)
+};
 
 int
 main (int argc, const char *argv[]) {

@@ -1,4 +1,4 @@
-#include "otoolp.h"
+#include "ofilep.h"
 
 
 static void
@@ -89,6 +89,11 @@ segment_64 (t_ofile *ofile, t_meta *meta, size_t offset) {
 
 	return EXIT_SUCCESS;
 }
+
+enum		e_opts {
+	OPT_h = (1 << 0),
+	OPT_t = (1 << 1)
+};
 
 int
 main (int argc, const char *argv[]) {
