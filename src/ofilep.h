@@ -35,6 +35,7 @@ typedef struct 			s_object {
 typedef struct			s_ofile {
 	const char			*bin;
 	const char 			*path;
+	const char 			*arch;
 	const void			*file;
 	uint8_t 			type;
 	t_dstr				*buffer;

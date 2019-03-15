@@ -98,14 +98,15 @@ enum		e_opts {
 int
 main (int argc, const char *argv[]) {
 
-	int index = 1, opt = 0;
-	const char *arch = NULL;
-	const t_opt	opts[] = {
+	int				index = 1, opt = 0;
+	static t_dstr	buffer;
+	const char		*arch = NULL;
+	const t_opt		opts[] = {
 		{FT_OPT_BOOLEAN, 'h', "help", &opt, "Display available options.", OPT_h},
 		{FT_OPT_BOOLEAN, 't', "text", &opt, "Display the contents of the (__TEXT,__text) section.", OPT_t},
-		{FT_OPT_STRING, 'A', "arch", &arch, "Specifies the architecture of the file to display when the file is a "\
-			"fat binary. \"all\" can be specified to display all architectures in the file. The default is to display "\
-			"only the host architecture.", 0},
+		{FT_OPT_STRING, 'A', "arch", &arch, "Specifies the architecture of the file to display when the file is "\
+			"a fat binary. \"all\" can be specified to display all architectures in the file. The default is to "\
+			"display only the host architecture.", 0},
 		{FT_OPT_END, 0, 0, 0, 0, 0}
 	};
 
@@ -115,22 +116,36 @@ main (int argc, const char *argv[]) {
 		return (opt & OPT_h) ? EXIT_SUCCESS : EXIT_FAILURE;
 	};
 
-	if (opt < OPT_t) return ft_fprintf(stderr, "ft_otool: one of -t or -h must be specified.\n"), EXIT_FAILURE;
+	if (opt < OPT_t) return ft_fprintf(stderr, "%s: one of -t or -h must be specified.\n", argv[0]), EXIT_FAILURE;
 	if (argc == index) argv[argc++] = "a.out";
+	if (arch == NULL) {
+		arch = NXGetLocalArchInfo()->name;
+	} else if (ft_strequ(arch, "all") == 0 && NXGetArchInfoFromName(arch) == NULL) {
 
+		ft_fprintf(stderr, "%1$s: unknown architecture specification flag: --arch %2$s\n%1$s: known architecture flags"\
+			" are:", argv[0], arch);
+		const NXArchInfo *nxArchInfo = NXGetAllArchInfos();
+
+		for (int k = 0; nxArchInfo[k].name != NULL; k++) ft_fprintf(stderr, " %s", nxArchInfo[k].name);
+
+		ft_fprintf(stderr, "\n");
+		ft_optusage(opts, (char *)argv[0], "[file(s)]", "Hexdump [file(s)] (a.out by default).");
+		return EXIT_FAILURE;
+	}
+
+	t_ofile			ofile = {
+			.bin = argv[0],
+			.arch = arch,
+			.buffer = &buffer,
+			.type = E_MACHO,
+			.errcode = E_RRNO
+	};
 	static t_meta meta = {
 			.n_command = LC_SEGMENT_64 + 1,
 			.reader = {
 					[LC_SEGMENT] = segment,
 					[LC_SEGMENT_64] = segment_64
 			}
-	};
-	static t_dstr buffer;
-	t_ofile ofile = {
-			.type = E_MACHO,
-			.buffer = &buffer,
-			.bin = argv[0],
-			.errcode = E_RRNO,
 	};
 
 	for ( ; index < argc; index++) {
