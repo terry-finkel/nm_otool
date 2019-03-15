@@ -48,11 +48,12 @@ read_macho_file (t_ofile *ofile, t_meta *meta) {
 	size_t				offset = header_size[ofile->is_64];
 	uint32_t			ncmds = oswap_32(ofile, header->ncmds);
 
+	ofile->arch = NXGetArchInfoFromCpuType(header->cputype, header->cpusubtype)->name;
 	for (meta->k_command = 0; meta->k_command < ncmds; meta->k_command++) {
 
 		struct load_command *loader = (struct load_command *)ofile_extract(ofile, offset, sizeof(*loader));
 
-		if (loader->cmdsize % 8) return (meta->errcode = E_INVAL8), EXIT_FAILURE;
+		if (loader->cmdsize % (ofile->is_64 ? 8 : 4)) return (meta->errcode = E_INVAL8), EXIT_FAILURE;
 
 		uint32_t command = oswap_32(ofile, loader->cmd);
 
@@ -81,7 +82,12 @@ open_file (const char *path, t_ofile *ofile, t_meta *meta) {
 	ofile->file = mmap(NULL, ofile->size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (close(fd) == -1 || ofile->file == MAP_FAILED) return EXIT_FAILURE;
 
-	t_magic magic[] = {
+	struct s_magic {
+		uint32_t 	magic;
+		bool		is_64: 1;
+		bool		is_cigam: 1;
+		int 		(*read_file)(t_ofile *, t_meta *);
+	} magic[] = {
 			{MH_MAGIC, false, false, read_macho_file},
 			{MH_MAGIC_64, true, false, read_macho_file},
 			{MH_CIGAM, false, true, read_macho_file},

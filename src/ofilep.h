@@ -10,6 +10,7 @@
 /* For fstat. */
 # include <sys/stat.h>
 
+# include <mach-o/arch.h>
 # include <mach-o/loader.h>
 # include "../libft/include/libft.h"
 
@@ -34,6 +35,7 @@ typedef struct	s_meta {
 
 typedef struct	s_ofile {
 	const void	*file;
+	const char 	*arch;
 	t_dstr		*buffer;
 	bool		is_64: 1;
 	bool		is_cigam: 1;
@@ -41,13 +43,6 @@ typedef struct	s_ofile {
 	size_t 		size;
 	int 		(*reader[])(struct s_ofile *, t_meta *, size_t);
 }				t_ofile;
-
-typedef struct	s_magic {
-	uint32_t 	magic;
-	bool		is_64: 1;
-	bool		is_cigam: 1;
-	int 		(*read_file)(t_ofile *, t_meta *);
-}				t_magic;
 
 int 			open_file(const char *path, t_ofile *ofile, t_meta *meta);
 int				printerr (t_meta error);

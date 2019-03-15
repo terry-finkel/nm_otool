@@ -4,13 +4,20 @@
 static void
 hexdump (t_ofile *ofile, const uint64_t offset, const uint64_t addr, const uint64_t size) {
 
-	unsigned char *ptr = (unsigned char *)ofile_extract(ofile, offset, size);
+	uint32_t	*ptr = (uint32_t *)ofile_extract(ofile, offset, size);
+	const bool	byte_dump = ft_strequ(ofile->arch, "i386") || ft_strequ(ofile->arch, "x86-64");
+
 	ft_dstrfpush(ofile->buffer, "Contents of (__TEXT,__text) section\n");
 	for (uint64_t k = 0; k < size; k++) {
 
 		if (k % 16 == 0) ft_dstrfpush(ofile->buffer, "%0*llx\t", ofile->is_64 ? 16 : 8, addr + k);
 
-		ft_dstrfpush(ofile->buffer, "%.2x ", ptr[k]);
+		if (byte_dump == true) {
+			ft_dstrfpush(ofile->buffer, "%02x ", ((unsigned char *)ptr)[k]);
+		} else {
+			ft_dstrfpush(ofile->buffer, "%08x ", oswap_32(ofile, *(ptr + k / 4)));
+			k += 3;
+		}
 
 		if (k % 16 == 15 || k + 1 == size) ft_dstrfpush(ofile->buffer, "\n");
 	}
@@ -19,7 +26,7 @@ hexdump (t_ofile *ofile, const uint64_t offset, const uint64_t addr, const uint6
 static int
 segment (t_ofile *ofile, t_meta *meta, size_t offset) {
 
-	struct segment_command *segment = (struct segment_command *)ofile_extract(ofile, offset, sizeof *segment);
+	struct segment_command	*segment = (struct segment_command *)ofile_extract(ofile, offset, sizeof *segment);
 
 	offset += sizeof *segment;
 	for (uint32_t k = 0; k < segment->nsects; k++) {
@@ -44,7 +51,7 @@ segment (t_ofile *ofile, t_meta *meta, size_t offset) {
 static int
 segment_64 (t_ofile *ofile, t_meta *meta, size_t offset) {
 
-	struct segment_command_64 *segment = (struct segment_command_64 *)ofile_extract(ofile, offset, sizeof *segment);
+	struct segment_command_64	*segment = (struct segment_command_64 *)ofile_extract(ofile, offset, sizeof *segment);
 
 	if (segment->fileoff + segment->filesize > ofile->size) {
 
@@ -77,7 +84,7 @@ int
 main (int argc, const char *argv[]) {
 
 	int index = 1, opt = 0;
-	const t_opt opts[] = {
+	const t_opt	opts[] = {
 		{FT_OPT_BOOLEAN, 'h', "help", &opt, "Display available options", OPT_h},
 		{FT_OPT_BOOLEAN, 't', "text", &opt, "Display the contents of the (__TEXT,__text) section.", OPT_t},
 		{FT_OPT_END, 0, 0, 0, 0, 0}
