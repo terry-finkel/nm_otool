@@ -13,15 +13,15 @@
 # include <mach-o/loader.h>
 # include "../libft/include/libft.h"
 
-# define ofile_peek(ofile, offset, peek_size) (offset + peek_size > ofile->size ? NULL : ofile->file + offset)
+# define ofile_extract(ofile, offset, peek_size) (offset + peek_size > ofile->size ? NULL : ofile->file + offset)
 # define oswap_32(ofile, item) (ofile->is_cigam ? OSSwapConstInt32(item) : item)
 # define oswap_64(ofile, item) (ofile->is_cigam ? OSSwapConstInt64(item) : item)
 
 enum 			e_error {
-	E_SUCCESS = 0,
+	E_FAILURE = -1,
+	E_SUCCESS,
 	E_INVAL,
-	E_MH_HEADER,
-	E_FAILURE = -1
+	E_INVAL8
 };
 
 typedef struct	s_ofile {
@@ -30,17 +30,15 @@ typedef struct	s_ofile {
 	bool		is_cigam: 1;
 	size_t 		ncommand;
 	size_t 		size;
-	int 		(*browser[])(struct s_ofile *, size_t);
+	int 		(*reader[])(const char *, struct s_ofile *, size_t);
 }				t_ofile;
 
 typedef struct	s_magic {
 	uint32_t 	magic;
 	bool		is_64: 1;
 	bool		is_cigam: 1;
-	int 		(*browse_file)(t_ofile *);
+	int 		(*read_file)(const char *, t_ofile *);
 }				t_magic;
-
-# define MAGIC_LEN 4
 
 int 			open_file(const char *path, t_ofile *ofile);
 int				printerr (const char *bin, const char *file, int error);
