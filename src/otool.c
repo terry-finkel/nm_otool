@@ -4,7 +4,7 @@
 static void
 hexdump (t_ofile *ofile, t_object *object, const uint64_t offset, const uint64_t addr, const uint64_t size) {
 
-	uint32_t	*ptr = (uint32_t *)object_extract(object, offset, size);
+	uint32_t	*ptr = (uint32_t *)(object->object + offset);
 	const bool	dbyte = (object->nxArchInfo == NULL
 			|| (object->nxArchInfo->cputype != CPU_TYPE_I386 && object->nxArchInfo->cputype != CPU_TYPE_X86_64));
 
@@ -29,11 +29,11 @@ hexdump (t_ofile *ofile, t_object *object, const uint64_t offset, const uint64_t
 static int
 segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
-	struct segment_command	*segment = (struct segment_command *)object_extract(object, offset, sizeof *segment);
+	struct segment_command	*segment = (struct segment_command *)(object->object + offset);
 
 	if (oswap_32(object, segment->fileoff) + oswap_32(object, segment->filesize) > object->size) {
 
-		ofile->errcode = E_INVALSEGOFF;
+		ofile->errcode = E_SEGOFF;
 		meta->command = oswap_32(object, segment->cmd);
 		return EXIT_FAILURE;
 	}
@@ -42,10 +42,18 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 	const uint32_t nsects = oswap_32(object, segment->nsects);
 	for (uint32_t k = 0; k < nsects; k++) {
 
-		const struct section *section = (struct section *)object_extract(object, offset, sizeof *section);
+		const struct section *section = (struct section *)(object->object + offset);
+		if (oswap_32(object, section->offset) + oswap_32(object, section->size) > ofile->size) {
+
+			ofile->errcode = E_SECTOFF;
+			meta->command = oswap_32(object, segment->cmd);
+			meta->k_section = k;
+			return EXIT_FAILURE;
+		}
+
 		if (ft_strequ(section->segname, "__TEXT") && ft_strequ(section->sectname, "__text")) {
 
-			ft_dstrfpush(ofile->buffer, "%s", ofile->path);
+			ft_dstrfpush(ofile->buffer, "%s", meta->path);
 
 			if (ofile->arch_output) ft_dstrfpush(ofile->buffer, " (architecture %s)", ofile->arch);
 
@@ -66,11 +74,11 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 static int
 segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
-	struct segment_command_64	*segment = (struct segment_command_64 *)object_extract(object, offset, sizeof *segment);
+	struct segment_command_64	*segment = (struct segment_command_64 *)(object->object + offset);
 
 	if (oswap_64(object, segment->fileoff) + oswap_64(object, segment->filesize) > object->size) {
 
-		ofile->errcode = E_INVALSEGOFF;
+		ofile->errcode = E_SEGOFF;
 		meta->command = oswap_32(object, segment->cmd);
 		return EXIT_FAILURE;
 	}
@@ -79,10 +87,18 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 	const uint32_t nsects = oswap_32(object, segment->nsects);
 	for (uint32_t k = 0; k < nsects; k++) {
 
-		const struct section_64 *section = (struct section_64 *)object_extract(object, offset, sizeof *section);
+		const struct section_64 *section = (struct section_64 *)(object->object + offset);
+		if (oswap_32(object, section->offset) + oswap_32(object, section->size) > ofile->size) {
+
+			ofile->errcode = E_SECTOFF;
+			meta->command = oswap_32(object, segment->cmd);
+			meta->k_section = k;
+			return EXIT_FAILURE;
+		}
+
 		if (ft_strequ(section->segname, "__TEXT") && ft_strequ(section->sectname, "__text")) {
 
-			ft_dstrfpush(ofile->buffer, "%s", ofile->path);
+			ft_dstrfpush(ofile->buffer, "%s", meta->path);
 
 			if (ofile->arch_output) ft_dstrfpush(ofile->buffer, " (architecture %s)", ofile->arch);
 
@@ -108,7 +124,7 @@ enum		e_opts {
 int
 main (int argc, const char *argv[]) {
 
-	int				index = 1, opt = 0;
+	int				index = 1, opt = 0, retcode = EXIT_SUCCESS;
 	static t_dstr	buffer;
 	static t_meta	meta = {
 			.n_command = LC_SEGMENT_64 + 1,
@@ -118,7 +134,6 @@ main (int argc, const char *argv[]) {
 			}
 	};
 	t_ofile			ofile = {
-			.bin = argv[0],
 			.arch = NULL,
 			.dump_all = false,
 			.buffer = &buffer,
@@ -160,16 +175,19 @@ main (int argc, const char *argv[]) {
 		return EXIT_FAILURE;
 	}
 
+	meta.bin = argv[0];
 	for ( ; index < argc; index++) {
 
-		const char *path = argv[index];
-		ofile.path = path;
+		meta.path = argv[index];
+		if (open_file(&ofile, &meta) != EXIT_SUCCESS) {
 
-		if (open_file(&ofile, &meta) != EXIT_SUCCESS) return printerr(ofile, meta);
+			retcode = EXIT_FAILURE;
+			printerr(&ofile, &meta);
+		}
 
 		ft_printf(ofile.buffer->buff);
 		ft_dstrclr(ofile.buffer);
 	}
 
-	return EXIT_SUCCESS;
+	return retcode;
 }

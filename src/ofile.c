@@ -1,21 +1,21 @@
 #include "ofilep.h"
+#include <fcntl.h>
 #include <mach-o/fat.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 
-/* For open. */
-# include <fcntl.h>
-
-/* For mmap and munmap. */
-# include <sys/mman.h>
-
-/* For fstat. */
-# include <sys/stat.h>
+#define XTEND "extends past the end of the file)\n"
 
 static int				dispatch(t_ofile * ofile, t_object *object, t_meta *meta);
 
 static const char		*errors[] = {
-		"truncated or malformed object",
+		"truncated or malformed",
 		"is not an object file",
-		"cmdsize not a multiple of 8"
+		"cmdsize not a multiple of 8",
+		"extends past the end all load commands in the file)\n",
+		"fileoff field plus filesize field",
+		"offset field plus size field of section",
+		"offset plus size of"
 };
 
 static const size_t		header_size[] = {
@@ -23,30 +23,47 @@ static const size_t		header_size[] = {
 		[true] = sizeof(struct mach_header_64)
 };
 
+static const char 		*filecodes[] = {
+		[E_MACHO] = "object",
+		[E_FAT] = "fat file"
+};
+
 static const char 		*segcodes[] = {
 		[LC_SEGMENT] = "LC_SEGMENT",
 		[LC_SEGMENT_64] = "LC_SEGMENT_64"
 };
 
+
 int
-printerr (t_ofile ofile, t_meta meta) {
+printerr (const t_ofile *ofile, const t_meta *meta) {
 
-	if (ofile.errcode == E_RRNO) {
+	if (ofile->errcode == E_RRNO) {
 
-		ft_fprintf(stderr, "%s: \'%s\': %s\n", ofile.bin, ofile.path, strerror(errno));
-	} else if (ofile.errcode == E_MAGIC) {
+		ft_fprintf(stderr, "%s: \'%s\': %s\n", meta->bin, meta->path, strerror(errno));
+	} else if (ofile->errcode == E_MAGIC) {
 
-		ft_fprintf(stderr, "%s: %s\n", ofile.path, errors[ofile.errcode]);
+		ft_fprintf(stderr, "%s: %s\n", meta->path, errors[ofile->errcode]);
 	} else {
 
-		ft_fprintf(stderr, "%s: \'%s\': %s (load command %d ", ofile.bin, ofile.path, errors[0], meta.k_command);
-		switch (ofile.errcode) {
-			case E_INVALSEGOFF:
-				ft_fprintf(stderr, "fileoff field plus filesize field in %s extends past the end of the file)\n",\
-					segcodes[meta.command]);
+		ft_fprintf(stderr, "%s: \'%s\': %s %s ", meta->bin, meta->path, errors[0], filecodes[ofile->type]);
+		switch (ofile->errcode) {
+			case E_LOADOFF:
+				ft_fprintf(stderr, "(load command %u %s", meta->k_command + 1, errors[ofile->errcode]);
+				break;
+			case E_SEGOFF:
+				ft_fprintf(stderr, "(load command %u %s in %s %s", meta->k_command, errors[ofile->errcode],
+					segcodes[meta->command], XTEND);
+				break;
+			case E_SECTOFF:
+				ft_fprintf(stderr, "(%s %u in %s command %u %s", errors[ofile->errcode], meta->k_section,\
+					segcodes[meta->command], meta->k_command, XTEND);
+				break;
+			case E_FATOFF:
+				ft_fprintf(stderr, "(%s cputype (%d) cpusubtype (%d) %s", errors[ofile->errcode],\
+					(*meta->nxArchInfo)->cputype, (*meta->nxArchInfo)->cpusubtype, XTEND);
 				break;
 			default:
-				ft_fprintf(stderr, "%s)\n", errors[ofile.errcode]);
+				ft_fprintf(stderr, "%s)\n", errors[ofile->errcode]);
 		}
 	}
 
@@ -54,10 +71,30 @@ printerr (t_ofile ofile, t_meta meta) {
 }
 
 static int
+test_offset_fat_arch (t_ofile *ofile, t_object *object, size_t offset) {
+
+	int retcode = EXIT_SUCCESS;
+
+	if (object->fat_64) {
+
+		const struct fat_arch_64 *fat_arch = (struct fat_arch_64 *)(object->object + offset);
+		if (oswap_64(object, fat_arch->offset) + oswap_64(object, fat_arch->size) > ofile->size) retcode = EXIT_FAILURE;
+	} else {
+
+		const struct fat_arch *fat_arch = (struct fat_arch *)(object->object + offset);
+		if (oswap_32(object, fat_arch->offset) + oswap_32(object, fat_arch->size) > ofile->size) retcode = EXIT_FAILURE;
+	}
+
+	if (retcode == EXIT_FAILURE) ofile->errcode = E_FATOFF;
+
+	return retcode;
+}
+
+static int
 read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 
 	int 				retcode = EXIT_SUCCESS;
-	struct mach_header	*header = (struct mach_header *)object_extract(object, 0, sizeof *header);
+	struct mach_header	*header = (struct mach_header *)object->object;
 	uint32_t			ncmds = oswap_32(object, header->ncmds);
 	size_t 				offset = header_size[object->is_64];
 
@@ -68,8 +105,9 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 
 	for (meta->k_command = 0; meta->k_command < ncmds; meta->k_command++) {
 
-		const struct load_command *loader = (struct load_command *)object_extract(object, offset, sizeof *loader);
+		const struct load_command *loader = (struct load_command *)(object->object + offset);
 		if (oswap_32(object, loader->cmdsize) % (object->is_64 ? 8 : 4)) return (ofile->errcode = E_INVAL8), EXIT_FAILURE;
+		if (oswap_32(object, loader->cmdsize) > ofile->size) return (ofile->errcode = E_LOADOFF), EXIT_FAILURE;
 
 		uint32_t command = oswap_32(object, loader->cmd);
 
@@ -107,10 +145,11 @@ static int
 read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 
 	int 				retcode = EXIT_SUCCESS;
-	struct fat_header	*fat_header = (struct fat_header *)object_extract(object, 0, sizeof *fat_header);
+	struct fat_header	*fat_header = (struct fat_header *)object->object;
 	size_t 				offset = sizeof *fat_header;
 	uint32_t 			nfat_arch = oswap_32(object, fat_header->nfat_arch);
 
+	/* is_64 and is_cigam will be overwritten by architecture files in the fat header, so we store them beforehand. */
 	ofile->type = E_FAT;
 	object->fat_64 = object->is_64;
 	object->fat_cigam = object->is_cigam;
@@ -124,10 +163,11 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 
 		for (uint32_t k = 0; k < nfat_arch; k++) {
 
-			const struct fat_arch *fat_arch = (struct fat_arch *)object_extract(object, offset, sizeof *fat_arch);
+			const struct fat_arch *fat_arch = (struct fat_arch *)(object->object + offset);
 			object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)fat_arch->cputype),
 					(cpu_subtype_t)oswap_32(object, (uint32_t)fat_arch->cpusubtype));
 
+			if (test_offset_fat_arch(ofile, object, offset) == EXIT_FAILURE) return EXIT_FAILURE;
 			if (ft_strequ(ofile->arch, object->nxArchInfo->name)) return dispatch_fat(ofile, object, meta, fat_arch);
 
 			offset += sizeof *fat_arch;
@@ -136,22 +176,34 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 		if (ofile->dump_all == false) {
 
 			/* The architecture hasn't been found. */
-			ft_printf("%s: file: %s does not contain architecture: %s\n", ofile->bin, ofile->path, ofile->arch);
+			ft_printf("%s: file: %s does not contain architecture: %s\n", meta->bin, meta->path, ofile->arch);
 			return EXIT_SUCCESS;
 		}
 
 		offset = sizeof *fat_header;
 	}
 
+	/*
+	   If this code is reached, either "all" was specified, or the host architecture wasn't found in the fat file.
+	   Either way, we can dump everything.
+	*/
+
 	ofile->arch_output = true;
 	for (uint32_t k = 0; k < nfat_arch; k++) {
 
-		const struct fat_arch *fat_arch = (struct fat_arch *)object_extract(object, offset, sizeof *fat_arch);
+		/* Mutate object architecture specifications to treat it as an independent Mach-O file. */
+		const struct fat_arch *fat_arch = (struct fat_arch *)(object->object + offset);
 		object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)fat_arch->cputype),
 				(cpu_subtype_t)oswap_32(object, (uint32_t)fat_arch->cpusubtype));
-		ofile->arch = object->nxArchInfo->name;
 
-		if ((retcode = dispatch_fat(ofile, object, meta, fat_arch) != EXIT_SUCCESS)) break;
+		if (test_offset_fat_arch(ofile, object, offset) == EXIT_FAILURE) return EXIT_FAILURE;
+
+		ofile->arch = object->nxArchInfo->name;
+		if (dispatch_fat(ofile, object, meta, fat_arch) != EXIT_SUCCESS) {
+
+			printerr(ofile, meta);
+			retcode = EXIT_FAILURE;
+		}
 
 		offset += sizeof *fat_arch;
 	}
@@ -206,13 +258,13 @@ int
 open_file (t_ofile *ofile, t_meta *meta) {
 
 	/* Open the file, perform various checks and map it into memory. */
-	const int 	fd = open(ofile->path, O_RDONLY);
+	const int 	fd = open(meta->path, O_RDONLY);
 	struct stat	stat;
 
 	if (fd == -1 || fstat(fd, &stat) == -1) return EXIT_FAILURE;
 
 	ofile->size = (size_t)stat.st_size;
-	if (ofile->size < sizeof(uint32_t)) return (errno = EBADMACHO), EXIT_FAILURE;
+	if (ofile->size < sizeof(uint32_t)) return (ofile->errcode = E_MAGIC), EXIT_FAILURE;
 	if (stat.st_mode & S_IFDIR) return (errno = EISDIR), EXIT_FAILURE;
 
 	ofile->file = mmap(NULL, ofile->size, PROT_READ, MAP_PRIVATE, fd, 0);
@@ -227,8 +279,11 @@ open_file (t_ofile *ofile, t_meta *meta) {
 			.object = ofile->file,
 			.size = ofile->size,
 	};
+	meta->nxArchInfo = &object.nxArchInfo;
 
+	/* Send the file to the generic dispatcher. */
 	int retcode = dispatch(ofile, &object, meta);
+
 	munmap((void *)ofile->file, ofile->size);
 	return retcode;
 }

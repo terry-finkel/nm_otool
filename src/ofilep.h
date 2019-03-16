@@ -5,7 +5,6 @@
 # include <mach-o/loader.h>
 # include "../libft/include/libft.h"
 
-# define object_extract(object, offset, peek_size) (offset + peek_size > object->size ? NULL : object->object + offset)
 # define oswap_32(object, item) (object->is_cigam ? OSSwapConstInt32(item) : item)
 # define oswap_64(object, item) (object->is_cigam ? OSSwapConstInt64(item) : item)
 
@@ -13,7 +12,10 @@ enum 					e_errcode {
 	E_RRNO = 0,
 	E_MAGIC,
 	E_INVAL8,
-	E_INVALSEGOFF
+	E_LOADOFF,
+	E_SEGOFF,
+	E_SECTOFF,
+	E_FATOFF
 };
 
 enum 					e_type {
@@ -33,8 +35,6 @@ typedef struct 			s_object {
 }						t_object;
 
 typedef struct			s_ofile {
-	const char			*bin;
-	const char 			*path;
 	const char 			*arch;
 	const void			*file;
 	t_dstr				*buffer;
@@ -46,6 +46,10 @@ typedef struct			s_ofile {
 }						t_ofile;
 
 typedef struct			s_meta {
+	const char			*bin;
+	const char 			*path;
+	const NXArchInfo	**nxArchInfo;
+	uint32_t 			k_section;
 	uint32_t			k_command;
 	size_t 				n_command;
 	uint32_t 			command;
@@ -53,6 +57,6 @@ typedef struct			s_meta {
 }						t_meta;
 
 int 					open_file(t_ofile *ofile, t_meta *meta);
-int						printerr (t_ofile ofile, t_meta meta);
+int						printerr (const t_ofile *ofile, const t_meta *meta);
 
 #endif /* OFILEP_H */
