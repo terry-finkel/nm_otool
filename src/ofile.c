@@ -32,8 +32,10 @@ int
 printerr (t_ofile ofile, t_meta meta) {
 
 	if (ofile.errcode == E_RRNO) {
+
 		ft_fprintf(stderr, "%s: \'%s\': %s\n", ofile.bin, ofile.path, strerror(errno));
 	} else if (ofile.errcode == E_MAGIC) {
+
 		ft_fprintf(stderr, "%s: %s\n", ofile.path, errors[ofile.errcode]);
 	} else {
 
@@ -59,8 +61,11 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 	uint32_t			ncmds = oswap_32(object, header->ncmds);
 	size_t 				offset = header_size[object->is_64];
 
-	object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)header->cputype),
-						(cpu_subtype_t)oswap_32(object, (uint32_t)header->cpusubtype));
+	if (object->nxArchInfo == NULL) {
+		object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)header->cputype),
+				(cpu_subtype_t)oswap_32(object, (uint32_t)header->cpusubtype));
+	}
+
 	for (meta->k_command = 0; meta->k_command < ncmds; meta->k_command++) {
 
 		const struct load_command *loader = (struct load_command *)object_extract(object, offset, sizeof *loader);
@@ -78,33 +83,77 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 }
 
 static int
+dispatch_fat (t_ofile *ofile, t_object *object, t_meta *meta, const struct fat_arch *arch) {
+
+	int	retcode;
+
+	if (object->fat_64 == false) {
+
+		object->object = ofile->file + oswap_32(object, arch->offset);
+		object->size = oswap_32(object, arch->size);
+		retcode = dispatch(ofile, object, meta);
+		object->is_64 = object->fat_64;
+		object->is_cigam = object->fat_cigam;
+		object->object = ofile->file;
+	} else {
+
+		retcode = dispatch(ofile, object, meta);
+	}
+
+	return retcode;
+}
+
+static int
 read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 
-	int					retcode = EXIT_SUCCESS;
+	int 				retcode = EXIT_SUCCESS;
 	struct fat_header	*fat_header = (struct fat_header *)object_extract(object, 0, sizeof *fat_header);
+	size_t 				offset = sizeof *fat_header;
+	uint32_t 			nfat_arch = oswap_32(object, fat_header->nfat_arch);
 
 	ofile->type = E_FAT;
 	object->fat_64 = object->is_64;
 	object->fat_cigam = object->is_cigam;
-	size_t offset = sizeof *fat_header;
-	if (object->fat_64 == false) {
 
-		for (uint32_t k = 0; k < oswap_32(object, fat_header->nfat_arch); k++) {
+	/*
+	   If the "all" architecture flag hasn't been specified, we first iterate through every available architecture in
+	   the fat object in order to find one that matches the specified one if given, or the host one if not.
+	*/
+
+	if (ft_strequ(ofile->arch, "all") == 0) {
+
+		for (uint32_t k = 0; k < nfat_arch; k++) {
 
 			const struct fat_arch *fat_arch = (struct fat_arch *)object_extract(object, offset, sizeof *fat_arch);
-			object->object = ofile->file + oswap_32(object, fat_arch->offset);
-			object->size = oswap_32(object, fat_arch->size);
+			object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)fat_arch->cputype),
+					(cpu_subtype_t)oswap_32(object, (uint32_t)fat_arch->cpusubtype));
 
-			if ((retcode = dispatch(ofile, object, meta) != EXIT_SUCCESS)) break;
+			if (ft_strequ(ofile->arch, object->nxArchInfo->name)) return dispatch_fat(ofile, object, meta, fat_arch);
 
-			object->is_64 = object->fat_64;
-			object->is_cigam = object->fat_cigam;
-			object->object = ofile->file;
 			offset += sizeof *fat_arch;
 		}
-	} else {
 
-		//TODO
+		if (ofile->dump_all == false) {
+
+			/* The architecture hasn't been found. */
+			ft_printf("%s: file: %s does not contain architecture: %s\n", ofile->bin, ofile->path, ofile->arch);
+			return EXIT_SUCCESS;
+		}
+
+		offset = sizeof *fat_header;
+	}
+
+	ofile->arch_output = true;
+	for (uint32_t k = 0; k < nfat_arch; k++) {
+
+		const struct fat_arch *fat_arch = (struct fat_arch *)object_extract(object, offset, sizeof *fat_arch);
+		object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)fat_arch->cputype),
+				(cpu_subtype_t)oswap_32(object, (uint32_t)fat_arch->cpusubtype));
+		ofile->arch = object->nxArchInfo->name;
+
+		if ((retcode = dispatch_fat(ofile, object, meta, fat_arch) != EXIT_SUCCESS)) break;
+
+		offset += sizeof *fat_arch;
 	}
 
 	return retcode;
@@ -133,6 +182,7 @@ dispatch (t_ofile *ofile, t_object *object, t_meta *meta) {
 
 	for (int k = 0; k < magic_len; k++) {
 
+		/* Find the magic number of the object. Then dispatch it to the correct reader. */
 		if (*(uint32_t *)object->object == magic[k].magic) {
 
 			object->is_64 = magic[k].is_64;
@@ -141,6 +191,7 @@ dispatch (t_ofile *ofile, t_object *object, t_meta *meta) {
 			break;
 		}
 
+		/* The first 4 bytes didn't match any magic number, object is invalid. */
 		if (k + 1 == magic_len) {
 
 			ofile->errcode = E_MAGIC;
@@ -154,6 +205,7 @@ dispatch (t_ofile *ofile, t_object *object, t_meta *meta) {
 int
 open_file (t_ofile *ofile, t_meta *meta) {
 
+	/* Open the file, perform various checks and map it into memory. */
 	const int 	fd = open(ofile->path, O_RDONLY);
 	struct stat	stat;
 
@@ -166,10 +218,16 @@ open_file (t_ofile *ofile, t_meta *meta) {
 	ofile->file = mmap(NULL, ofile->size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (close(fd) == -1 || ofile->file == MAP_FAILED) return EXIT_FAILURE;
 
+	/*
+	   We duplicate the file and the file size into the object structure as well, it will allow us to process FAT
+	   objects independently.
+	*/
+
 	t_object object = {
 			.object = ofile->file,
 			.size = ofile->size,
 	};
+
 	int retcode = dispatch(ofile, &object, meta);
 	munmap((void *)ofile->file, ofile->size);
 	return retcode;

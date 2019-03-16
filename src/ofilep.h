@@ -9,7 +9,7 @@
 # define oswap_32(object, item) (object->is_cigam ? OSSwapConstInt32(item) : item)
 # define oswap_64(object, item) (object->is_cigam ? OSSwapConstInt64(item) : item)
 
-enum 					e_error {
+enum 					e_errcode {
 	E_RRNO = 0,
 	E_MAGIC,
 	E_INVAL8,
@@ -26,10 +26,10 @@ typedef struct 			s_object {
 	const void 			*object;
 	size_t 				size;
 	const NXArchInfo	*nxArchInfo;
-	bool				is_64: 1;
-	bool				is_cigam: 1;
-	bool				fat_64: 1;
-	bool				fat_cigam: 1;
+	bool				is_64;
+	bool				is_cigam;
+	bool				fat_64;
+	bool				fat_cigam;
 }						t_object;
 
 typedef struct			s_ofile {
@@ -37,10 +37,12 @@ typedef struct			s_ofile {
 	const char 			*path;
 	const char 			*arch;
 	const void			*file;
-	uint8_t 			type;
 	t_dstr				*buffer;
 	size_t				size;
-	uint8_t 			errcode;
+	bool				arch_output: 1;
+	bool				dump_all: 1;
+	uint8_t 			type: 3;
+	uint8_t 			errcode: 3;
 }						t_ofile;
 
 typedef struct			s_meta {

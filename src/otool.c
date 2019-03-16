@@ -14,9 +14,11 @@ hexdump (t_ofile *ofile, t_object *object, const uint64_t offset, const uint64_t
 		if (k % 16 == 0) ft_dstrfpush(ofile->buffer, "%0*llx\t", object->is_64 ? 16 : 8, addr + k);
 
 		if (dbyte == true) {
+
 			ft_dstrfpush(ofile->buffer, "%08x ", oswap_32(object, *(ptr + k / 4)));
 			k += 3;
 		} else {
+
 			ft_dstrfpush(ofile->buffer, "%02x ", ((unsigned char *)ptr)[k]);
 		}
 
@@ -43,7 +45,11 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 		const struct section *section = (struct section *)object_extract(object, offset, sizeof *section);
 		if (ft_strequ(section->segname, "__TEXT") && ft_strequ(section->sectname, "__text")) {
 
-			ft_dstrfpush(ofile->buffer, "%s:\n", ofile->path);
+			ft_dstrfpush(ofile->buffer, "%s", ofile->path);
+
+			if (ofile->arch_output) ft_dstrfpush(ofile->buffer, " (architecture %s)", ofile->arch);
+
+			ft_dstrfpush(ofile->buffer, ":\n");
 			const uint32_t s_offset = oswap_32(object, section->offset);
 			const uint32_t s_addr = oswap_32(object, section->addr);
 			const uint32_t s_size = oswap_32(object, section->size);
@@ -76,7 +82,11 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 		const struct section_64 *section = (struct section_64 *)object_extract(object, offset, sizeof *section);
 		if (ft_strequ(section->segname, "__TEXT") && ft_strequ(section->sectname, "__text")) {
 
-			ft_dstrfpush(ofile->buffer, "%s:\n", ofile->path);
+			ft_dstrfpush(ofile->buffer, "%s", ofile->path);
+
+			if (ofile->arch_output) ft_dstrfpush(ofile->buffer, " (architecture %s)", ofile->arch);
+
+			ft_dstrfpush(ofile->buffer, ":\n");
 			const uint64_t s_offset = oswap_64(object, section->offset);
 			const uint64_t s_addr = oswap_64(object, section->addr);
 			const uint64_t s_size = oswap_64(object, section->size);
@@ -100,11 +110,25 @@ main (int argc, const char *argv[]) {
 
 	int				index = 1, opt = 0;
 	static t_dstr	buffer;
-	const char		*arch = NULL;
+	static t_meta	meta = {
+			.n_command = LC_SEGMENT_64 + 1,
+			.reader = {
+					[LC_SEGMENT] = segment,
+					[LC_SEGMENT_64] = segment_64
+			}
+	};
+	t_ofile			ofile = {
+			.bin = argv[0],
+			.arch = NULL,
+			.dump_all = false,
+			.buffer = &buffer,
+			.type = E_MACHO,
+			.errcode = E_RRNO
+	};
 	const t_opt		opts[] = {
 		{FT_OPT_BOOLEAN, 'h', "help", &opt, "Display available options.", OPT_h},
 		{FT_OPT_BOOLEAN, 't', "text", &opt, "Display the contents of the (__TEXT,__text) section.", OPT_t},
-		{FT_OPT_STRING, 'A', "arch", &arch, "Specifies the architecture of the file to display when the file is "\
+		{FT_OPT_STRING, 'A', "arch", &ofile.arch, "Specifies the architecture of the file to display when the file is "\
 			"a fat binary. \"all\" can be specified to display all architectures in the file. The default is to "\
 			"display only the host architecture.", 0},
 		{FT_OPT_END, 0, 0, 0, 0, 0}
@@ -118,12 +142,15 @@ main (int argc, const char *argv[]) {
 
 	if (opt < OPT_t) return ft_fprintf(stderr, "%s: one of -t or -h must be specified.\n", argv[0]), EXIT_FAILURE;
 	if (argc == index) argv[argc++] = "a.out";
-	if (arch == NULL) {
-		arch = NXGetLocalArchInfo()->name;
-	} else if (ft_strequ(arch, "all") == 0 && NXGetArchInfoFromName(arch) == NULL) {
+
+	if (ofile.arch == NULL) {
+
+		ofile.arch = NXGetLocalArchInfo()->name;
+		ofile.dump_all = true;
+	} else if (ft_strequ(ofile.arch, "all") == 0 && NXGetArchInfoFromName(ofile.arch) == NULL) {
 
 		ft_fprintf(stderr, "%1$s: unknown architecture specification flag: --arch %2$s\n%1$s: known architecture flags"\
-			" are:", argv[0], arch);
+			" are:", argv[0], ofile.arch);
 		const NXArchInfo *nxArchInfo = NXGetAllArchInfos();
 
 		for (int k = 0; nxArchInfo[k].name != NULL; k++) ft_fprintf(stderr, " %s", nxArchInfo[k].name);
@@ -132,21 +159,6 @@ main (int argc, const char *argv[]) {
 		ft_optusage(opts, (char *)argv[0], "[file(s)]", "Hexdump [file(s)] (a.out by default).");
 		return EXIT_FAILURE;
 	}
-
-	t_ofile			ofile = {
-			.bin = argv[0],
-			.arch = arch,
-			.buffer = &buffer,
-			.type = E_MACHO,
-			.errcode = E_RRNO
-	};
-	static t_meta meta = {
-			.n_command = LC_SEGMENT_64 + 1,
-			.reader = {
-					[LC_SEGMENT] = segment,
-					[LC_SEGMENT_64] = segment_64
-			}
-	};
 
 	for ( ; index < argc; index++) {
 
