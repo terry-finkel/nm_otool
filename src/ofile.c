@@ -35,35 +35,35 @@ static const char 		*segcodes[] = {
 
 
 int
-printerr (const t_ofile *ofile, const t_meta *meta) {
+printerr (const t_meta *meta) {
 
-	if (ofile->errcode == E_RRNO) {
+	if (meta->errcode == E_RRNO) {
 
 		ft_fprintf(stderr, "%s: \'%s\': %s\n", meta->bin, meta->path, strerror(errno));
-	} else if (ofile->errcode == E_MAGIC) {
+	} else if (meta->errcode == E_MAGIC) {
 
-		ft_fprintf(stderr, "%s: %s\n", meta->path, errors[ofile->errcode]);
+		ft_fprintf(stderr, "%s: %s\n", meta->path, errors[meta->errcode]);
 	} else {
 
-		ft_fprintf(stderr, "%s: \'%s\': %s %s ", meta->bin, meta->path, errors[0], filecodes[ofile->type]);
-		switch (ofile->errcode) {
+		ft_fprintf(stderr, "%s: \'%s\': %s %s ", meta->bin, meta->path, errors[0], filecodes[meta->type]);
+		switch (meta->errcode) {
 			case E_LOADOFF:
-				ft_fprintf(stderr, "(load command %u %s", meta->k_command + 1, errors[ofile->errcode]);
+				ft_fprintf(stderr, "(load command %u %s", meta->k_command + 1, errors[meta->errcode]);
 				break;
 			case E_SEGOFF:
-				ft_fprintf(stderr, "(load command %u %s in %s %s", meta->k_command, errors[ofile->errcode],
+				ft_fprintf(stderr, "(load command %u %s in %s %s", meta->k_command, errors[meta->errcode],
 					segcodes[meta->command], XTEND);
 				break;
 			case E_SECTOFF:
-				ft_fprintf(stderr, "(%s %u in %s command %u %s", errors[ofile->errcode], meta->k_section,\
+				ft_fprintf(stderr, "(%s %u in %s command %u %s", errors[meta->errcode], meta->k_section,\
 					segcodes[meta->command], meta->k_command, XTEND);
 				break;
 			case E_FATOFF:
-				ft_fprintf(stderr, "(%s cputype (%d) cpusubtype (%d) %s", errors[ofile->errcode],\
+				ft_fprintf(stderr, "(%s cputype (%d) cpusubtype (%d) %s", errors[meta->errcode],\
 					(*meta->nxArchInfo)->cputype, (*meta->nxArchInfo)->cpusubtype, XTEND);
 				break;
 			default:
-				ft_fprintf(stderr, "%s)\n", errors[ofile->errcode]);
+				ft_fprintf(stderr, "%s)\n", errors[meta->errcode]);
 		}
 	}
 
@@ -71,7 +71,7 @@ printerr (const t_ofile *ofile, const t_meta *meta) {
 }
 
 static int
-test_offset_fat_arch (t_ofile *ofile, t_object *object, size_t offset) {
+test_offset_fat_arch (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
 	int retcode = EXIT_SUCCESS;
 
@@ -85,7 +85,7 @@ test_offset_fat_arch (t_ofile *ofile, t_object *object, size_t offset) {
 		if (oswap_32(object, fat_arch->offset) + oswap_32(object, fat_arch->size) > ofile->size) retcode = EXIT_FAILURE;
 	}
 
-	if (retcode == EXIT_FAILURE) ofile->errcode = E_FATOFF;
+	if (retcode == EXIT_FAILURE) meta->errcode = E_FATOFF;
 
 	return retcode;
 }
@@ -106,8 +106,8 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 	for (meta->k_command = 0; meta->k_command < ncmds; meta->k_command++) {
 
 		const struct load_command *loader = (struct load_command *)(object->object + offset);
-		if (oswap_32(object, loader->cmdsize) % (object->is_64 ? 8 : 4)) return (ofile->errcode = E_INVAL8), EXIT_FAILURE;
-		if (oswap_32(object, loader->cmdsize) > ofile->size) return (ofile->errcode = E_LOADOFF), EXIT_FAILURE;
+		if (oswap_32(object, loader->cmdsize) % (object->is_64 ? 8 : 4)) return (meta->errcode = E_INVAL8), EXIT_FAILURE;
+		if (oswap_32(object, loader->cmdsize) > ofile->size) return (meta->errcode = E_LOADOFF), EXIT_FAILURE;
 
 		uint32_t command = oswap_32(object, loader->cmd);
 
@@ -150,7 +150,7 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 	uint32_t 			nfat_arch = oswap_32(object, fat_header->nfat_arch);
 
 	/* is_64 and is_cigam will be overwritten by architecture files in the fat header, so we store them beforehand. */
-	ofile->type = E_FAT;
+	meta->type = E_FAT;
 	object->fat_64 = object->is_64;
 	object->fat_cigam = object->is_cigam;
 
@@ -167,13 +167,13 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 			object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)fat_arch->cputype),
 					(cpu_subtype_t)oswap_32(object, (uint32_t)fat_arch->cpusubtype));
 
-			if (test_offset_fat_arch(ofile, object, offset) == EXIT_FAILURE) return EXIT_FAILURE;
+			if (test_offset_fat_arch(ofile, object, meta, offset) == EXIT_FAILURE) return EXIT_FAILURE;
 			if (ft_strequ(ofile->arch, object->nxArchInfo->name)) return dispatch_fat(ofile, object, meta, fat_arch);
 
 			offset += sizeof *fat_arch;
 		}
 
-		if (ofile->dump_all == false) {
+		if (ofile->dump_all_arch == false) {
 
 			/* The architecture hasn't been found. */
 			ft_printf("%s: file: %s does not contain architecture: %s\n", meta->bin, meta->path, ofile->arch);
@@ -196,12 +196,12 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 		object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)fat_arch->cputype),
 				(cpu_subtype_t)oswap_32(object, (uint32_t)fat_arch->cpusubtype));
 
-		if (test_offset_fat_arch(ofile, object, offset) == EXIT_FAILURE) return EXIT_FAILURE;
+		if (test_offset_fat_arch(ofile, object, meta, offset) == EXIT_FAILURE) return EXIT_FAILURE;
 
 		ofile->arch = object->nxArchInfo->name;
 		if (dispatch_fat(ofile, object, meta, fat_arch) != EXIT_SUCCESS) {
 
-			printerr(ofile, meta);
+			printerr(meta);
 			retcode = EXIT_FAILURE;
 		}
 
@@ -246,7 +246,7 @@ dispatch (t_ofile *ofile, t_object *object, t_meta *meta) {
 		/* The first 4 bytes didn't match any magic number, object is invalid. */
 		if (k + 1 == magic_len) {
 
-			ofile->errcode = E_MAGIC;
+			meta->errcode = E_MAGIC;
 			retcode = EXIT_FAILURE;
 		}
 	}
@@ -264,7 +264,7 @@ open_file (t_ofile *ofile, t_meta *meta) {
 	if (fd == -1 || fstat(fd, &stat) == -1) return EXIT_FAILURE;
 
 	ofile->size = (size_t)stat.st_size;
-	if (ofile->size < sizeof(uint32_t)) return (ofile->errcode = E_MAGIC), EXIT_FAILURE;
+	if (ofile->size < sizeof(uint32_t)) return (meta->errcode = E_MAGIC), EXIT_FAILURE;
 	if (stat.st_mode & S_IFDIR) return (errno = EISDIR), EXIT_FAILURE;
 
 	ofile->file = mmap(NULL, ofile->size, PROT_READ, MAP_PRIVATE, fd, 0);

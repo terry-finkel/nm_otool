@@ -39,16 +39,18 @@ typedef struct			s_ofile {
 	const void			*file;
 	t_dstr				*buffer;
 	size_t				size;
-	bool				arch_output: 1;
-	bool				dump_all: 1;
-	uint8_t 			type: 3;
-	uint8_t 			errcode: 3;
+	bool				arch_output;
+	bool				dump_all_arch;
+	bool				dump_header;
+	bool				dump_text;
 }						t_ofile;
 
 typedef struct			s_meta {
 	const char			*bin;
 	const char 			*path;
 	const NXArchInfo	**nxArchInfo;
+	uint8_t 			errcode: 4;
+	uint8_t 			type: 4;
 	uint32_t 			k_section;
 	uint32_t			k_command;
 	size_t 				n_command;
@@ -57,6 +59,6 @@ typedef struct			s_meta {
 }						t_meta;
 
 int 					open_file(t_ofile *ofile, t_meta *meta);
-int						printerr (const t_ofile *ofile, const t_meta *meta);
+int						printerr (const t_meta *meta);
 
 #endif /* OFILEP_H */

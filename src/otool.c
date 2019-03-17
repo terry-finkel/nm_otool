@@ -2,6 +2,25 @@
 
 
 static void
+header_dump (t_ofile *ofile, t_object *object) {
+
+	const struct mach_header	*header = (struct mach_header *)object->object;
+	const uint32_t 				magic = oswap_32(object, header->magic);
+	const uint32_t				cputype = oswap_32(object, (uint32_t)header->cputype);
+	const uint32_t				cpusubtype = oswap_32(object, (uint32_t)header->cpusubtype) & ~CPU_SUBTYPE_MASK;
+	const bool					caps = (oswap_32(object, (uint32_t)header->cpusubtype) & CPU_SUBTYPE_MASK) != 0;
+	const uint32_t				filetype = oswap_32(object, header->filetype);
+	const uint32_t				ncmds = oswap_32(object, header->ncmds);
+	const uint32_t				sizeofcmds = oswap_32(object, header->sizeofcmds);
+	const uint32_t 				flags = oswap_32(object, header->flags);
+
+	ft_dstrfpush(ofile->buffer, "Mach header\n");
+	ft_dstrfpush(ofile->buffer, "      magic cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags\n");
+	ft_dstrfpush(ofile->buffer, "%11#x %7d %10d %5.2#p %11u %5u %10u %#.8x\n", magic, cputype, cpusubtype, caps ? 128 : 0,
+		filetype, ncmds, sizeofcmds, flags);
+}
+
+static void
 hexdump (t_ofile *ofile, t_object *object, const uint64_t offset, const uint64_t addr, const uint64_t size) {
 
 	uint32_t	*ptr = (uint32_t *)(object->object + offset);
@@ -33,7 +52,7 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
 	if (oswap_32(object, segment->fileoff) + oswap_32(object, segment->filesize) > object->size) {
 
-		ofile->errcode = E_SEGOFF;
+		meta->errcode = E_SEGOFF;
 		meta->command = oswap_32(object, segment->cmd);
 		return EXIT_FAILURE;
 	}
@@ -45,7 +64,7 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 		const struct section *section = (struct section *)(object->object + offset);
 		if (oswap_32(object, section->offset) + oswap_32(object, section->size) > ofile->size) {
 
-			ofile->errcode = E_SECTOFF;
+			meta->errcode = E_SECTOFF;
 			meta->command = oswap_32(object, segment->cmd);
 			meta->k_section = k;
 			return EXIT_FAILURE;
@@ -53,15 +72,17 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
 		if (ft_strequ(section->segname, "__TEXT") && ft_strequ(section->sectname, "__text")) {
 
-			ft_dstrfpush(ofile->buffer, "%s", meta->path);
+			if (ofile->dump_text) ft_dstrfpush(ofile->buffer, "%s", meta->path);
+			if (ofile->dump_text && ofile->arch_output) ft_dstrfpush(ofile->buffer, " (architecture %s)", ofile->arch);
+			if (ofile->dump_text) ft_dstrfpush(ofile->buffer, ":\n");
 
-			if (ofile->arch_output) ft_dstrfpush(ofile->buffer, " (architecture %s)", ofile->arch);
-
-			ft_dstrfpush(ofile->buffer, ":\n");
 			const uint32_t s_offset = oswap_32(object, section->offset);
 			const uint32_t s_addr = oswap_32(object, section->addr);
 			const uint32_t s_size = oswap_32(object, section->size);
-			hexdump(ofile, object, s_offset, s_addr, s_size);
+
+			if (ofile->dump_text) hexdump(ofile, object, s_offset, s_addr, s_size);
+			if (ofile->dump_header) header_dump(ofile, object);
+
 			break;
 		}
 
@@ -78,7 +99,7 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
 	if (oswap_64(object, segment->fileoff) + oswap_64(object, segment->filesize) > object->size) {
 
-		ofile->errcode = E_SEGOFF;
+		meta->errcode = E_SEGOFF;
 		meta->command = oswap_32(object, segment->cmd);
 		return EXIT_FAILURE;
 	}
@@ -90,7 +111,7 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 		const struct section_64 *section = (struct section_64 *)(object->object + offset);
 		if (oswap_32(object, section->offset) + oswap_32(object, section->size) > ofile->size) {
 
-			ofile->errcode = E_SECTOFF;
+			meta->errcode = E_SECTOFF;
 			meta->command = oswap_32(object, segment->cmd);
 			meta->k_section = k;
 			return EXIT_FAILURE;
@@ -98,15 +119,17 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
 		if (ft_strequ(section->segname, "__TEXT") && ft_strequ(section->sectname, "__text")) {
 
-			ft_dstrfpush(ofile->buffer, "%s", meta->path);
+			if (ofile->dump_text) ft_dstrfpush(ofile->buffer, "%s", meta->path);
+			if (ofile->dump_text && ofile->arch_output) ft_dstrfpush(ofile->buffer, " (architecture %s)", ofile->arch);
+			if (ofile->dump_text) ft_dstrfpush(ofile->buffer, ":\n");
 
-			if (ofile->arch_output) ft_dstrfpush(ofile->buffer, " (architecture %s)", ofile->arch);
-
-			ft_dstrfpush(ofile->buffer, ":\n");
 			const uint64_t s_offset = oswap_64(object, section->offset);
 			const uint64_t s_addr = oswap_64(object, section->addr);
 			const uint64_t s_size = oswap_64(object, section->size);
-			hexdump(ofile, object, s_offset, s_addr, s_size);
+
+			if (ofile->dump_text) hexdump(ofile, object, s_offset, s_addr, s_size);
+			if (ofile->dump_header) header_dump(ofile, object);
+
 			break;
 		}
 
@@ -128,6 +151,8 @@ main (int argc, const char *argv[]) {
 	static t_dstr	buffer;
 	static t_meta	meta = {
 			.n_command = LC_SEGMENT_64 + 1,
+			.errcode = E_RRNO,
+			.type = E_MACHO,
 			.reader = {
 					[LC_SEGMENT] = segment,
 					[LC_SEGMENT_64] = segment_64
@@ -135,36 +160,36 @@ main (int argc, const char *argv[]) {
 	};
 	t_ofile			ofile = {
 			.arch = NULL,
-			.dump_all = false,
-			.buffer = &buffer,
-			.type = E_MACHO,
-			.errcode = E_RRNO
+			.dump_all_arch = false,
+			.buffer = &buffer
 	};
 	const t_opt		opts[] = {
-		{FT_OPT_BOOLEAN, 'h', "help", &opt, "Display available options.", OPT_h},
+		{FT_OPT_BOOLEAN, 'h', "header", &opt, "Display the Mach header.", OPT_h},
 		{FT_OPT_BOOLEAN, 't', "text", &opt, "Display the contents of the (__TEXT,__text) section.", OPT_t},
-		{FT_OPT_STRING, 'A', "arch", &ofile.arch, "Specifies the architecture of the file to display when the file is "\
-			"a fat binary. \"all\" can be specified to display all architectures in the file. The default is to "\
+		{FT_OPT_STRING, 'A', "arch", &ofile.arch, "Specifies the architecture of the file to display when the file is "
+			"a fat binary. \"all\" can be specified to display all architectures in the file. The default is to "
 			"display only the host architecture.", 0},
 		{FT_OPT_END, 0, 0, 0, 0, 0}
 	};
 
-	if (ft_optparse(opts, &index, argc, (char **)argv) || opt & OPT_h) {
+	if (ft_optparse(opts, &index, argc, (char **)argv)) {
 
 		ft_optusage(opts, (char *)argv[0], "[file(s)]", "Hexdump [file(s)] (a.out by default).");
-		return (opt & OPT_h) ? EXIT_SUCCESS : EXIT_FAILURE;
+		return EXIT_FAILURE;
 	};
 
-	if (opt < OPT_t) return ft_fprintf(stderr, "%s: one of -t or -h must be specified.\n", argv[0]), EXIT_FAILURE;
+	if (opt < OPT_h) return ft_fprintf(stderr, "%s: one of -t or -h must be specified.\n", argv[0]), EXIT_FAILURE;
 	if (argc == index) argv[argc++] = "a.out";
 
+	ofile.dump_header = (opt & OPT_h) != 0;
+	ofile.dump_text = (opt & OPT_t) != 0;
 	if (ofile.arch == NULL) {
 
 		ofile.arch = NXGetLocalArchInfo()->name;
-		ofile.dump_all = true;
+		ofile.dump_all_arch = true;
 	} else if (ft_strequ(ofile.arch, "all") == 0 && NXGetArchInfoFromName(ofile.arch) == NULL) {
 
-		ft_fprintf(stderr, "%1$s: unknown architecture specification flag: --arch %2$s\n%1$s: known architecture flags"\
+		ft_fprintf(stderr, "%1$s: unknown architecture specification flag: --arch %2$s\n%1$s: known architecture flags"
 			" are:", argv[0], ofile.arch);
 		const NXArchInfo *nxArchInfo = NXGetAllArchInfos();
 
@@ -182,7 +207,7 @@ main (int argc, const char *argv[]) {
 		if (open_file(&ofile, &meta) != EXIT_SUCCESS) {
 
 			retcode = EXIT_FAILURE;
-			printerr(&ofile, &meta);
+			printerr(&meta);
 		}
 
 		ft_printf(ofile.buffer->buff);
