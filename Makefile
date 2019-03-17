@@ -30,11 +30,9 @@ OBJDIR :=				./build/
 SRCDIR :=				./src/
 
 #	Sources
-NM_SRCS +=				nm.c
-OFILE_SRCS +=			ofile.c
-OTOOL_SRCS +=			otool.c
+NM_SRCS +=				ofile.c nm.c
+OTOOL_SRCS +=			ofile.c otool.c
 OBJECTS +=				$(patsubst %.c,$(OBJDIR)%.o,$(NM_SRCS))
-OBJECTS +=				$(patsubst %.c,$(OBJDIR)%.o,$(OFILE_SRCS))
 OBJECTS +=				$(patsubst %.c,$(OBJDIR)%.o,$(OTOOL_SRCS))
 
 vpath %.c $(SRCDIR)
@@ -43,14 +41,14 @@ vpath %.c $(SRCDIR)
 ##    RULES    ##
 #################
 
-all: libft $(NM) $(OTOOL)
+all: $(NM) $(OTOOL)
 
-$(NM): $(OBJECTS)
-	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(OFILE_SRCS))) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(NM_SRCS))) -L $(LIBFTDIR) -lft -o $@
+$(NM): libft $(OBJECTS)
+	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(NM_SRCS))) -L $(LIBFTDIR) -lft -o $@
 	@printf  "\033[92m\033[1;32mCompiling -------------> \033[91m$(NM)\033[0m\033[1;32m:\033[0m%-15s\033[32m[✔]\033[0m\n"
 
-$(OTOOL): $(OBJECTS)
-	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(OFILE_SRCS))) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(OTOOL_SRCS))) -L $(LIBFTDIR) -lft -o $@
+$(OTOOL): libft $(OBJECTS)
+	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(OTOOL_SRCS))) -L $(LIBFTDIR) -lft -o $@
 	@printf  "\033[92m\033[1;32mCompiling -------------> \033[91m$(OTOOL)\033[0m\033[1;32m:\033[0m%-12s\033[32m[✔]\033[0m\n"
 
 $(OBJECTS): | $(OBJDIR)
@@ -83,6 +81,4 @@ noflags: re
 
 re: fclean all
 
-purge: fclean
-
-.PHONY: all clean fast fclean libft noflags purge re
+.PHONY: all clean fast fclean ft_nm ft_otool libft noflags re

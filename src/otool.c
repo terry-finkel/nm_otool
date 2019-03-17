@@ -2,25 +2,6 @@
 
 
 static void
-header_dump (t_ofile *ofile, t_object *object) {
-
-	const struct mach_header	*header = (struct mach_header *)object->object;
-	const uint32_t 				magic = oswap_32(object, header->magic);
-	const uint32_t				cputype = oswap_32(object, (uint32_t)header->cputype);
-	const uint32_t				cpusubtype = oswap_32(object, (uint32_t)header->cpusubtype) & ~CPU_SUBTYPE_MASK;
-	const bool					caps = (oswap_32(object, (uint32_t)header->cpusubtype) & CPU_SUBTYPE_MASK) != 0;
-	const uint32_t				filetype = oswap_32(object, header->filetype);
-	const uint32_t				ncmds = oswap_32(object, header->ncmds);
-	const uint32_t				sizeofcmds = oswap_32(object, header->sizeofcmds);
-	const uint32_t 				flags = oswap_32(object, header->flags);
-
-	ft_dstrfpush(ofile->buffer, "Mach header\n");
-	ft_dstrfpush(ofile->buffer, "      magic cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags\n");
-	ft_dstrfpush(ofile->buffer, "%11#x %7d %10d %5.2#p %11u %5u %10u %#.8x\n", magic, cputype, cpusubtype, caps ? 128 : 0,
-		filetype, ncmds, sizeofcmds, flags);
-}
-
-static void
 hexdump (t_ofile *ofile, t_object *object, const uint64_t offset, const uint64_t addr, const uint64_t size) {
 
 	uint32_t	*ptr = (uint32_t *)(object->object + offset);
@@ -72,18 +53,11 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
 		if (ft_strequ(section->segname, "__TEXT") && ft_strequ(section->sectname, "__text")) {
 
-			if (ofile->dump_text) ft_dstrfpush(ofile->buffer, "%s", meta->path);
-			if (ofile->dump_text && ofile->arch_output) ft_dstrfpush(ofile->buffer, " (architecture %s)", ofile->arch);
-			if (ofile->dump_text) ft_dstrfpush(ofile->buffer, ":\n");
-
 			const uint32_t s_offset = oswap_32(object, section->offset);
 			const uint32_t s_addr = oswap_32(object, section->addr);
 			const uint32_t s_size = oswap_32(object, section->size);
 
 			if (ofile->dump_text) hexdump(ofile, object, s_offset, s_addr, s_size);
-			if (ofile->dump_header) header_dump(ofile, object);
-
-			break;
 		}
 
 		offset += sizeof *section;
@@ -119,18 +93,11 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
 		if (ft_strequ(section->segname, "__TEXT") && ft_strequ(section->sectname, "__text")) {
 
-			if (ofile->dump_text) ft_dstrfpush(ofile->buffer, "%s", meta->path);
-			if (ofile->dump_text && ofile->arch_output) ft_dstrfpush(ofile->buffer, " (architecture %s)", ofile->arch);
-			if (ofile->dump_text) ft_dstrfpush(ofile->buffer, ":\n");
-
 			const uint64_t s_offset = oswap_64(object, section->offset);
 			const uint64_t s_addr = oswap_64(object, section->addr);
 			const uint64_t s_size = oswap_64(object, section->size);
 
 			if (ofile->dump_text) hexdump(ofile, object, s_offset, s_addr, s_size);
-			if (ofile->dump_header) header_dump(ofile, object);
-
-			break;
 		}
 
 		offset += sizeof *section;

@@ -70,6 +70,25 @@ printerr (const t_meta *meta) {
 	return EXIT_FAILURE;
 }
 
+static void
+header_dump (t_ofile *ofile, t_object *object) {
+
+	const struct mach_header	*header = (struct mach_header *)object->object;
+	const uint32_t 				magic = oswap_32(object, header->magic);
+	const uint32_t				cputype = oswap_32(object, (uint32_t)header->cputype);
+	const uint32_t				cpusubtype = oswap_32(object, (uint32_t)header->cpusubtype) & ~CPU_SUBTYPE_MASK;
+	const bool					caps = (oswap_32(object, (uint32_t)header->cpusubtype) & CPU_SUBTYPE_MASK) != 0;
+	const uint32_t				filetype = oswap_32(object, header->filetype);
+	const uint32_t				ncmds = oswap_32(object, header->ncmds);
+	const uint32_t				sizeofcmds = oswap_32(object, header->sizeofcmds);
+	const uint32_t 				flags = oswap_32(object, header->flags);
+
+	ft_dstrfpush(ofile->buffer, "Mach header\n");
+	ft_dstrfpush(ofile->buffer, "      magic cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags\n");
+	ft_dstrfpush(ofile->buffer, "%11#x %7d %10d %5.2#p %11u %5u %10u %#.8x\n", magic, cputype, cpusubtype,
+				 caps ? 128 : 0, filetype, ncmds, sizeofcmds, flags);
+}
+
 static int
 test_offset_fat_arch (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
@@ -103,6 +122,10 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 				(cpu_subtype_t)oswap_32(object, (uint32_t)header->cpusubtype));
 	}
 
+	if (ofile->dump_text) ft_dstrfpush(ofile->buffer, "%s", meta->path);
+	if (ofile->dump_text && ofile->arch_output) ft_dstrfpush(ofile->buffer, " (architecture %s)", ofile->arch);
+	if (ofile->dump_text) ft_dstrfpush(ofile->buffer, ":\n");
+
 	for (meta->k_command = 0; meta->k_command < ncmds; meta->k_command++) {
 
 		const struct load_command *loader = (struct load_command *)(object->object + offset);
@@ -117,26 +140,30 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 		offset += oswap_32(object, loader->cmdsize);
 	}
 
+	if (ofile->dump_header) header_dump(ofile, object);
+
 	return retcode;
 }
 
 static int
-dispatch_fat (t_ofile *ofile, t_object *object, t_meta *meta, const struct fat_arch *arch) {
-
-	int	retcode;
+dispatch_fat (t_ofile *ofile, t_object *object, t_meta *meta, const void *ptr) {
 
 	if (object->fat_64 == false) {
 
+		const struct fat_arch *arch = (struct fat_arch *)ptr;
 		object->object = ofile->file + oswap_32(object, arch->offset);
 		object->size = oswap_32(object, arch->size);
-		retcode = dispatch(ofile, object, meta);
-		object->is_64 = object->fat_64;
-		object->is_cigam = object->fat_cigam;
-		object->object = ofile->file;
 	} else {
 
-		retcode = dispatch(ofile, object, meta);
+		const struct fat_arch_64 *arch = (struct fat_arch_64 *)ptr;
+		object->object = ofile->file + oswap_64(object, arch->offset);
+		object->size = oswap_64(object, arch->size);
 	}
+
+	const int retcode = dispatch(ofile, object, meta);
+	object->is_64 = object->fat_64;
+	object->is_cigam = object->fat_cigam;
+	object->object = ofile->file;
 
 	return retcode;
 }
