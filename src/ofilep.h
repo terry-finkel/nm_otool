@@ -12,7 +12,9 @@
 enum 					e_errcode {
 	E_RRNO = 0,
 	E_GARBAGE,
-	E_INVAL8,
+	E_INV4L,
+	E_ARFMAG,
+	E_AROFFSET,
 	E_LOADOFF,
 	E_SEGOFF,
 	E_SECTOFF,
@@ -27,6 +29,7 @@ enum 					e_type {
 
 typedef struct 			s_object {
 	const void 			*object;
+	const char 			*name;
 	size_t 				size;
 	const NXArchInfo	*nxArchInfo;
 	bool				is_64;
@@ -50,6 +53,7 @@ typedef struct			s_ofile {
 typedef struct			s_meta {
 	const char			*bin;
 	const char 			*path;
+	const char 			*ar_member;
 	const NXArchInfo	**nxArchInfo;
 	uint8_t 			errcode: 4;
 	uint8_t 			type: 4;

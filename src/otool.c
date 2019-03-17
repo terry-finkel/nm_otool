@@ -150,7 +150,7 @@ main (int argc, const char *argv[]) {
 		return EXIT_FAILURE;
 	};
 
-	if (opt < OPT_h) return ft_fprintf(stderr, "%s: one of -dht must be specified.\n", argv[0]), EXIT_FAILURE;
+	if (opt < OPT_d) return ft_fprintf(stderr, "%s: one of -dht must be specified.\n", argv[0]), EXIT_FAILURE;
 	if (argc == index) argv[argc++] = "a.out";
 
 	ofile.dump_data = (opt & OPT_d) != 0;
