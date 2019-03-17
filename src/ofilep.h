@@ -5,12 +5,13 @@
 # include <mach-o/loader.h>
 # include "../libft/include/libft.h"
 
+# define opeek(object, offset, osize) (offset + osize > object->size ? NULL : object->object + offset)
 # define oswap_32(object, item) (object->is_cigam ? OSSwapConstInt32(item) : item)
 # define oswap_64(object, item) (object->is_cigam ? OSSwapConstInt64(item) : item)
 
 enum 					e_errcode {
 	E_RRNO = 0,
-	E_MAGIC,
+	E_GARBAGE,
 	E_INVAL8,
 	E_LOADOFF,
 	E_SEGOFF,
@@ -41,6 +42,7 @@ typedef struct			s_ofile {
 	size_t				size;
 	bool				arch_output;
 	bool				dump_all_arch;
+	bool				dump_data;
 	bool				dump_header;
 	bool				dump_text;
 }						t_ofile;
