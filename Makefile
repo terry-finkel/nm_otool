@@ -81,4 +81,4 @@ noflags: re
 
 re: fclean all
 
-.PHONY: all clean fast fclean ft_nm ft_otool libft noflags re
+.PHONY: all clean fast fclean noflags re

@@ -53,8 +53,8 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 			return EXIT_FAILURE;
 		}
 
-		if ((ft_strequ(section->segname, "__TEXT") && ft_strequ(section->sectname, "__text") && ofile->dump_text)
-			|| (ft_strequ(section->segname, "__DATA") && ft_strequ(section->sectname, "__data") && ofile->dump_data)) {
+		if ((ft_strequ(section->segname, SEG_TEXT) && ft_strequ(section->sectname, SECT_TEXT) && ofile->dump_text)
+			|| (ft_strequ(section->segname, SEG_DATA) && ft_strequ(section->sectname, SECT_DATA) && ofile->dump_data)) {
 
 			ft_dstrfpush(ofile->buffer, "Contents of (%s,%s) section\n", section->segname, section->sectname);
 			hexdump(ofile, object, oswap_32(object, section->offset), oswap_32(object, section->addr),
@@ -95,8 +95,8 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 			return EXIT_FAILURE;
 		}
 
-		if ((ft_strequ(section->segname, "__TEXT") && ft_strequ(section->sectname, "__text") && ofile->dump_text)
-			|| (ft_strequ(section->segname, "__DATA") && ft_strequ(section->sectname, "__data") && ofile->dump_data)) {
+		if ((ft_strequ(section->segname, SEG_TEXT) && ft_strequ(section->sectname, SECT_TEXT) && ofile->dump_text)
+			|| (ft_strequ(section->segname, SEG_DATA) && ft_strequ(section->sectname, SECT_DATA) && ofile->dump_data)) {
 
 			ft_dstrfpush(ofile->buffer, "Contents of (%s,%s) section\n", section->segname, section->sectname);
 			hexdump(ofile, object, oswap_64(object, section->offset), oswap_64(object, section->addr),
@@ -184,7 +184,7 @@ main (int argc, const char *argv[]) {
 			printerr(&meta);
 		} else {
 
-			ft_printf(ofile.buffer->buff);
+			ft_fprintf(stdout, ofile.buffer->buff);
 		}
 
 		ft_dstrclr(ofile.buffer);

@@ -12,6 +12,7 @@
 enum 					e_errcode {
 	E_RRNO = 0,
 	E_GARBAGE,
+	E_MAGIC,
 	E_INV4L,
 	E_ARFMAG,
 	E_AROFFSET,
@@ -56,7 +57,9 @@ typedef struct			s_meta {
 	const char 			*ar_member;
 	const NXArchInfo	**nxArchInfo;
 	uint8_t 			errcode: 4;
-	uint8_t 			type: 4;
+	uint8_t 			type: 2;
+	bool				arch;
+	bool				arch_error;
 	uint32_t 			k_section;
 	uint32_t			k_command;
 	size_t 				n_command;

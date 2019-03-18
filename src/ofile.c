@@ -22,7 +22,8 @@ static int				dispatch(t_ofile * ofile, t_object *object, t_meta *meta);
 static const char		*errors[] = {
 		"truncated or malformed",
 		"is not an object file",
-		"cmdsize not a multiple of 8",
+		"invalid magic",
+		"cmdsize not a multiple of",
 		"terminator characters in archive member not the correct",
 		"offset to next archive member past the end of the archive after member",
 		"extends past the end all load commands in the file)\n",
@@ -54,7 +55,7 @@ printerr (const t_meta *meta) {
 	if (meta->errcode == E_RRNO) {
 
 		ft_fprintf(stderr, "%s: \'%s\': %s\n", meta->bin, meta->path, strerror(errno));
-	} else if (meta->errcode == E_GARBAGE) {
+	} else if (meta->errcode < E_INV4L) {
 
 		ft_fprintf(stderr, "%s: %s\n", meta->path, errors[meta->errcode]);
 	} else {
@@ -62,10 +63,12 @@ printerr (const t_meta *meta) {
 		ft_fprintf(stderr, "%s: \'%s\': %s %s ", meta->bin, meta->path, errors[0], filecodes[meta->type]);
 		switch (meta->errcode) {
 			case E_INV4L:
-				ft_fprintf(stderr, "(load command %u %s)\n", meta->k_command, errors[meta->errcode]);
+				ft_fprintf(stderr, "(load command %u %s %d)\n", meta->k_command, errors[meta->errcode],
+						meta->arch ? 8 : 4);
 				break;
 			case E_ARFMAG:
-				ft_fprintf(stderr, "(%s %s values for the archive header)\n", errors[meta->errcode], STR(ARFMAG));
+				ft_fprintf(stderr, "(%s %s values for the archive member header for %s)\n", errors[meta->errcode],
+						STR(ARFMAG), meta->ar_member);
 				break;
 			case E_AROFFSET:
 				ft_fprintf(stderr, "(%s %s)\n", errors[meta->errcode], meta->ar_member);
@@ -134,7 +137,6 @@ test_offset_fat_arch (t_ofile *ofile, t_object *object, t_meta *meta, size_t off
 static int
 read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 
-	int retcode = EXIT_SUCCESS;
 	struct mach_header *header = (struct mach_header *)opeek(object, 0, sizeof *header);
 	if (header == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
 
@@ -158,20 +160,33 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 		const struct load_command *loader = (struct load_command *)opeek(object, offset, sizeof *loader);
 		if (loader == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
 
-		if (oswap_32(object, loader->cmdsize) % (object->is_64 ? 8 : 4)) return (meta->errcode = E_INV4L), EXIT_FAILURE;
-		if (oswap_32(object, loader->cmdsize) > ofile->size) return (meta->errcode = E_LOADOFF), EXIT_FAILURE;
+		const uint32_t command = oswap_32(object, loader->cmd);
+		const uint32_t cmdsize = oswap_32(object, loader->cmdsize);
 
-		uint32_t command = oswap_32(object, loader->cmd);
+		/* Various command checks. */
+		if (offset + cmdsize > object->size) return (meta->errcode = E_LOADOFF), EXIT_FAILURE;
+		if (cmdsize % (object->is_64 ? 8 : 4)) {
 
-		if ((ofile->dump_text || ofile->dump_data) && command < meta->n_command && meta->reader[command]
-			&& (retcode = meta->reader[command](ofile, object, meta, offset)) != EXIT_SUCCESS) break;
+			meta->arch = object->is_64;
+			meta->errcode = E_INV4L;
+			return EXIT_FAILURE;
+		}
+		if (cmdsize == 0) {
+
+			meta->k_command -= 1;
+			meta->errcode = E_LOADOFF;
+			return EXIT_FAILURE;
+		}
+
+		if (command < meta->n_command && meta->reader[command]
+			&& meta->reader[command](ofile, object, meta, offset) != EXIT_SUCCESS) return EXIT_FAILURE;
 
 		offset += oswap_32(object, loader->cmdsize);
 	}
 
 	if (ofile->dump_header) header_dump(ofile, object);
 
-	return retcode;
+	return EXIT_SUCCESS;
 }
 
 static int
@@ -200,7 +215,6 @@ dispatch_fat (t_ofile *ofile, t_object *object, t_meta *meta, const void *ptr) {
 static int
 read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 
-	int retcode = EXIT_SUCCESS;
 	struct fat_header *fat_header = (struct fat_header *)opeek(object, 0, sizeof *fat_header);
 	if (fat_header == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
 
@@ -257,31 +271,37 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 		object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)fat_arch->cputype),
 				(cpu_subtype_t)oswap_32(object, (uint32_t)fat_arch->cpusubtype));
 
-		if (test_offset_fat_arch(ofile, object, meta, offset) == EXIT_FAILURE) return EXIT_FAILURE;
+		if (test_offset_fat_arch(ofile, object, meta, offset) != EXIT_SUCCESS) return EXIT_FAILURE;
 
 		ofile->arch = object->nxArchInfo->name;
 
 		if (dispatch_fat(ofile, object, meta, fat_arch) != EXIT_SUCCESS) return EXIT_FAILURE;
 
+		/* At least one fat object has been printed, so we'll include the architecture type is there's an error. */
+		meta->arch_error = true;
+
+		/* Output object from the fat file and clear buffer. */
+		ft_fprintf(stdout, ofile->buffer->buff);
+		ft_dstrclr(ofile->buffer);
 		offset += sizeof *fat_arch;
 	}
 
-	return retcode;
+	return EXIT_SUCCESS;
 }
 
 static int
 process_archive (t_ofile *ofile, t_object *object, t_meta *meta, size_t *offset) {
 
+	int retcode = EXIT_SUCCESS;
 	const struct ar_hdr *ar_hdr = (struct ar_hdr *)opeek(object, *offset, sizeof *ar_hdr);
-	if (ar_hdr == NULL) {
+	if (ar_hdr == NULL) return (meta->errcode = E_AROFFSET), EXIT_FAILURE;
 
-		meta->errcode = E_AROFFSET;
-		meta->ar_member = ft_strdup(object->name);
-		return EXIT_FAILURE;
+	/* Consistency check. If it fails, don't return immediately so we can save the archive name to display it later. */
+	if (ft_strnequ(ARFMAG, ar_hdr->ar_fmag, 2) == 0) {
+
+		meta->errcode = E_ARFMAG;
+		retcode = EXIT_FAILURE;
 	}
-
-	/* Consistency check. */
-	if (ft_strnequ(ARFMAG, ar_hdr->ar_fmag, 2) == 0) return (meta->errcode = E_ARFMAG), EXIT_FAILURE;
 
 	*offset += sizeof *ar_hdr;
 	const int size = ft_atoi(ar_hdr->ar_size);
@@ -304,7 +324,8 @@ process_archive (t_ofile *ofile, t_object *object, t_meta *meta, size_t *offset)
 
 	/* Move offset to next archive member. */
 	*offset += object->size;
-	return EXIT_SUCCESS;
+	meta->ar_member = ft_strdup(object->name);
+	return retcode;
 }
 
 static int
@@ -361,8 +382,8 @@ dispatch (t_ofile *ofile, t_object *object, t_meta *meta) {
 
 	for (int k = 0; k < magic_len; k++) {
 
-		if (meta->type == E_FAT && k == 4) return (meta->errcode = E_RRNO), EXIT_FAILURE;
-		if (meta->type == E_AR && k == 8) return (meta->errcode = E_RRNO), EXIT_FAILURE;
+		if (meta->type == E_FAT && k == 4) return (meta->errcode = E_MAGIC), EXIT_FAILURE;
+		if (meta->type == E_AR && k == 8) return (meta->errcode = E_MAGIC), EXIT_FAILURE;
 
 		/* Find the magic number of the object. Then dispatch it to the correct reader. */
 		if ((magic[k].arch_magic != NULL && ft_strnequ(magic[k].arch_magic, object->object, SARMAG))
