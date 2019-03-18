@@ -2,16 +2,11 @@
 #include <ar.h>
 #include <fcntl.h>
 #include <mach-o/fat.h>
-#include <ranlib.h>
+#include <mach-o/ranlib.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-#ifndef SYMDEF_64
-# define SYMDEF_64 "__.SYMDEF_64"
-#endif
-#ifndef SYMDEF_64_SORTED
-# define SYMDEF_64_SORTED "__.SYMDEF_64 SORTED"
-#endif
+
 #define SAR_EFMT1 3
 #define STRINGIFY(x) #x
 #define STR(x) STRINGIFY(x)
@@ -276,9 +271,6 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 		ofile->arch = object->nxArchInfo->name;
 
 		if (dispatch_fat(ofile, object, meta, fat_arch) != EXIT_SUCCESS) return EXIT_FAILURE;
-
-		/* At least one fat object has been printed, so we'll include the architecture type is there's an error. */
-		meta->arch_error = true;
 
 		/* Output object from the fat file and clear buffer. */
 		ft_fprintf(stdout, ofile->buffer->buff);
