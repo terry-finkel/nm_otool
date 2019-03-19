@@ -301,22 +301,30 @@ process_archive (t_ofile *ofile, t_object *object, t_meta *meta, size_t *offset)
 	/* Populate our object. */
 	*offset += sizeof *ar_hdr;
 	object->size = (size_t)size;
+	int name_size = 0;
 	if (ft_strnequ(ar_hdr->ar_name, AR_EFMT1, SAR_EFMT1)) {
 
-		const int name_size = ft_atoi(ar_hdr->ar_name + SAR_EFMT1);
+		name_size = ft_atoi(ar_hdr->ar_name + SAR_EFMT1);
 		if (name_size < 0) return EXIT_FAILURE; /* ERRNO */
 
 		object->object = ofile->file + *offset + name_size;
 		object->name = ofile->file + *offset;
-		*offset += object->size;
-		object->size -= (size_t)name_size;
 	} else {
 
 		object->object = ofile->file + *offset;
 		object->name = ar_hdr->ar_name;
-		*offset += object->size;
 	}
 
+	/* Adujst size if name is EFMT1 */
+	object->size -= (size_t)name_size;
+
+	if (*offset + object->size > ofile->size) {
+
+		meta->errcode = E_AROFFSET;
+		retcode = EXIT_FAILURE;
+	}
+
+	*offset += object->size + name_size;
 	meta->ar_member = ft_strdup(object->name);
 	return retcode;
 }
@@ -328,9 +336,6 @@ read_archive (t_ofile *ofile, t_object *object, t_meta *meta) {
 	size_t offset = SARMAG;
 
 	if (process_archive(ofile, object, meta, &offset) != EXIT_SUCCESS) return EXIT_FAILURE;
-
-	dprintf(1, "%#lx, SIZE = %lu\n", offset, object->size);
-
 
 	/* Check SYMDEF validity. */
 	const char *symdef = ofile->file + sizeof(struct ar_hdr) + SARMAG;
@@ -346,9 +351,6 @@ read_archive (t_ofile *ofile, t_object *object, t_meta *meta) {
 		object->size = ofile->size;
 
 		if (process_archive(ofile, object, meta, &offset) != EXIT_SUCCESS) return EXIT_FAILURE;
-
-		dprintf(1, "%#lx, SIZE = %lu\n", offset, object->size);
-
 		if (dispatch(ofile, object, meta) != EXIT_SUCCESS) return EXIT_FAILURE;
 
 		ft_fprintf(stdout, ofile->buffer->buff);

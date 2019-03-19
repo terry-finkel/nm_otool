@@ -8,6 +8,7 @@ OS :=					$(shell uname -s)
 #	Output
 NM :=					ft_nm
 OTOOL :=				ft_otool
+LFT :=					$(LIBFTDIR)/libft.a
 
 #	Compiler
 CC :=					gcc
@@ -43,11 +44,11 @@ vpath %.c $(SRCDIR)
 
 all: $(NM) $(OTOOL)
 
-$(NM): libft $(OBJECTS)
+$(NM): $(LFT) $(OBJECTS)
 	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(NM_SRCS))) -L $(LIBFTDIR) -lft -o $@
 	@printf  "\033[92m\033[1;32mCompiling -------------> \033[91m$(NM)\033[0m\033[1;32m:\033[0m%-15s\033[32m[✔]\033[0m\n"
 
-$(OTOOL): libft $(OBJECTS)
+$(OTOOL): $(LFT) $(OBJECTS)
 	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(OTOOL_SRCS))) -L $(LIBFTDIR) -lft -o $@
 	@printf  "\033[92m\033[1;32mCompiling -------------> \033[91m$(OTOOL)\033[0m\033[1;32m:\033[0m%-12s\033[32m[✔]\033[0m\n"
 
@@ -73,7 +74,7 @@ fclean: clean
 	@/bin/rm -f $(OTOOL)
 	@printf  "\033[1;32mCleaning binary -------> \033[91m$(NM)/$(OTOOL)\033[0m\033[1;32m:\033[0m%-6s\033[32m[✔]\033[0m\n"
 
-libft:
+$(LFT):
 	@$(MAKE) fast -C $(LIBFTDIR)
 
 noflags: FLAGS := 
