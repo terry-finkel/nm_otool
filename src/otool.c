@@ -1,3 +1,4 @@
+#include <mach-o/nlist.h>
 #include "ofilep.h"
 
 
@@ -11,7 +12,6 @@ hexdump (t_ofile *ofile, t_object *object, const uint64_t offset, const uint64_t
 	for (uint64_t k = 0; k < size; k++) {
 
 		if (k % 16 == 0) ft_dstrfpush(ofile->buffer, "%0*llx\t", object->is_64 ? 16 : 8, addr + k);
-
 		if (dbyte == true) {
 
 			ft_dstrfpush(ofile->buffer, "%08x ", oswap_32(object, *(ptr + k / 4)));
@@ -30,7 +30,6 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
 	struct segment_command *segment = (struct segment_command *)opeek(object, offset, sizeof *segment);
 	if (segment == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
-
 	if (oswap_32(object, segment->fileoff) + oswap_32(object, segment->filesize) > object->size) {
 
 		meta->errcode = E_SEGOFF;
@@ -44,17 +43,8 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
 		const struct section *section = (struct section *)opeek(object, offset, sizeof *segment);
 		if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
-
-		if (oswap_32(object, section->offset) + oswap_32(object, section->size) > ofile->size) {
-
-			meta->errcode = E_SECTOFF;
-			meta->command = oswap_32(object, segment->cmd);
-			meta->k_section = k;
-			return EXIT_FAILURE;
-		}
-
-		if ((ft_strequ(section->segname, SEG_TEXT) && ft_strequ(section->sectname, SECT_TEXT) && ofile->dump_text)
-			|| (ft_strequ(section->segname, SEG_DATA) && ft_strequ(section->sectname, SECT_DATA) && ofile->dump_data)) {
+		if ((ft_strequ(section->segname, SEG_TEXT) && ft_strequ(section->sectname, SECT_TEXT) && ofile->opt & OTOOL_t)
+		|| (ft_strequ(section->segname, SEG_DATA) && ft_strequ(section->sectname, SECT_DATA) && ofile->opt & OTOOL_d)) {
 
 			ft_dstrfpush(ofile->buffer, "Contents of (%s,%s) section\n", section->segname, section->sectname);
 			hexdump(ofile, object, oswap_32(object, section->offset), oswap_32(object, section->addr),
@@ -72,7 +62,6 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
 	struct segment_command_64 *segment = (struct segment_command_64 *)(object->object + offset);
 	if (segment == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
-
 	if (oswap_64(object, segment->fileoff) + oswap_64(object, segment->filesize) > object->size) {
 
 		meta->errcode = E_SEGOFF;
@@ -86,20 +75,11 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
 		const struct section_64 *section = (struct section_64 *)(object->object + offset);
 		if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
-
-		if (oswap_32(object, section->offset) + oswap_32(object, section->size) > ofile->size) {
-
-			meta->errcode = E_SECTOFF;
-			meta->command = oswap_32(object, segment->cmd);
-			meta->k_section = k;
-			return EXIT_FAILURE;
-		}
-
-		if ((ft_strequ(section->segname, SEG_TEXT) && ft_strequ(section->sectname, SECT_TEXT) && ofile->dump_text)
-			|| (ft_strequ(section->segname, SEG_DATA) && ft_strequ(section->sectname, SECT_DATA) && ofile->dump_data)) {
+		if ((ft_strequ(section->segname, SEG_TEXT) && ft_strequ(section->sectname, SECT_TEXT) && ofile->opt & OTOOL_t)
+		|| (ft_strequ(section->segname, SEG_DATA) && ft_strequ(section->sectname, SECT_DATA) && ofile->opt & OTOOL_d)) {
 
 			ft_dstrfpush(ofile->buffer, "Contents of (%s,%s) section\n", section->segname, section->sectname);
-			hexdump(ofile, object, oswap_64(object, section->offset), oswap_64(object, section->addr),
+			hexdump(ofile, object, oswap_32(object, section->offset), oswap_64(object, section->addr),
 					oswap_64(object, section->size));
 		}
 
@@ -109,16 +89,42 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 	return EXIT_SUCCESS;
 }
 
-enum		e_opts {
-	OPT_d = 1,
-	OPT_h = 2,
-	OPT_t = 4
-};
+static int
+symtab_check (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
+
+	/* This function merely serves to check corrupted files. We won't output or need anything from it. */
+
+	(void)ofile, (void)meta;
+	const struct symtab_command *symtab = (struct symtab_command *)opeek(object, offset, sizeof *symtab);
+	if (symtab == NULL) return EXIT_FAILURE; /* ERRNO */
+
+	const uint32_t stroff = oswap_32(object, symtab->stroff);
+	const uint32_t strsize = oswap_32(object, symtab->strsize);
+	offset = oswap_32(object, symtab->symoff);
+
+	for (meta->k_strindex = 0; meta->k_strindex < oswap_32(object, symtab->nsyms); meta->k_strindex++) {
+
+		const struct nlist *nlist = (struct nlist *)opeek(object, offset, sizeof *nlist);
+		if (nlist == NULL) return EXIT_FAILURE; /* ERRNO */
+
+		const uint32_t n_strx = oswap_32(object, nlist->n_un.n_strx);
+		if (stroff + n_strx > object->size) {
+
+			meta->errcode = E_SYMSTRX;
+			meta->n_strindex = (int)(stroff + strsize + n_strx - ofile->size);
+			return EXIT_FAILURE;
+		}
+
+		offset += (object->is_64 ? sizeof(struct nlist_64) : sizeof(struct nlist));
+	}
+
+	return EXIT_SUCCESS;
+}
 
 int
 main (int argc, const char *argv[]) {
 
-	int				index = 1, opt = 0, retcode = EXIT_SUCCESS;
+	int				index = 1, retcode = EXIT_SUCCESS;
 	static t_dstr	buffer;
 	static t_meta	meta = {
 			.n_command = LC_SEGMENT_64 + 1,
@@ -126,18 +132,19 @@ main (int argc, const char *argv[]) {
 			.type = E_MACHO,
 			.reader = {
 					[LC_SEGMENT] = segment,
-					[LC_SEGMENT_64] = segment_64
+					[LC_SEGMENT_64] = segment_64,
+					[LC_SYMTAB] = symtab_check
 			}
 	};
 	t_ofile			ofile = {
 			.arch = NULL,
-			.dump_all_arch = false,
-			.buffer = &buffer
+			.buffer = &buffer,
+			.opt = 0
 	};
 	const t_opt		opts[] = {
-			{FT_OPT_BOOLEAN, 'd', "data", &opt, "Display the contents of the (__DATA, __data) section.", OPT_d},
-			{FT_OPT_BOOLEAN, 'h', "header", &opt, "Display the Mach header.", OPT_h},
-			{FT_OPT_BOOLEAN, 't', "text", &opt, "Display the contents of the (__TEXT,__text) section.", OPT_t},
+			{FT_OPT_BOOLEAN, 'd', "data", &ofile.opt, "Display the contents of the (__DATA, __data) section.", OTOOL_d},
+			{FT_OPT_BOOLEAN, 'h', "header", &ofile.opt, "Display the Mach header.", OTOOL_h},
+			{FT_OPT_BOOLEAN, 't', "text", &ofile.opt, "Display the contents of the (__TEXT,__text) section.", OTOOL_t},
 			{FT_OPT_STRING, 0, "arch", &ofile.arch, "Specifies the architecture of the file to display when the file "
 				"is a fat binary. \"all\" can be specified to display all architectures in the file. The default is to "
 				"display only the host architecture.", 0},
@@ -150,17 +157,14 @@ main (int argc, const char *argv[]) {
 		return EXIT_FAILURE;
 	};
 
-	if (opt < OPT_d) return ft_fprintf(stderr, "%s: one of -dht must be specified.\n", argv[0]), EXIT_FAILURE;
+	if (ofile.opt < OTOOL_d) return ft_fprintf(stderr, "%s: one of -dht must be specified.\n", argv[0]), EXIT_FAILURE;
 	if (argc == index) argv[argc++] = "a.out";
-
-	ofile.dump_data = (opt & OPT_d) != 0;
-	ofile.dump_header = (opt & OPT_h) != 0;
-	ofile.dump_text = (opt & OPT_t) != 0;
 
 	if (ofile.arch == NULL) {
 
 		ofile.arch = NXGetLocalArchInfo()->name;
-		ofile.dump_all_arch = true;
+		if (ft_strequ(ofile.arch, "x86_64h")) ofile.arch = "x86_64";
+		ofile.opt |= DUMP_ALL_ARCH;
 	} else if (ft_strequ(ofile.arch, "all") == 0 && NXGetArchInfoFromName(ofile.arch) == NULL) {
 
 		ft_fprintf(stderr, "%1$s: unknown architecture specification flag: --arch %2$s\n%1$s: known architecture flags"
