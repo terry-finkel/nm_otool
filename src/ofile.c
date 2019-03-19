@@ -50,40 +50,42 @@ printerr (const t_meta *meta) {
 	if (meta->errcode == E_RRNO) {
 
 		ft_fprintf(stderr, "%s: \'%s\': %s\n", meta->bin, meta->path, strerror(errno));
-	} else if (meta->errcode < E_INV4L) {
+		return EXIT_FAILURE;
+	}
+
+	if (meta->errcode < E_INV4L) {
 
 		ft_fprintf(stderr, "%s: %s\n", meta->path, errors[meta->errcode]);
-	} else {
+		return EXIT_FAILURE;
+	}
 
-		ft_fprintf(stderr, "%s: \'%s\': %s %s ", meta->bin, meta->path, errors[0], filecodes[meta->type]);
-		switch (meta->errcode) {
-			case E_INV4L:
-				ft_fprintf(stderr, "(load command %u %s %d)\n", meta->k_command, errors[meta->errcode],
-						meta->arch ? 8 : 4);
-				break;
-			case E_ARFMAG:
-				ft_fprintf(stderr, "(%s %s values for the archive member header for %s)\n", errors[meta->errcode],
-						STR(ARFMAG), meta->ar_member);
-				break;
-			case E_AROFFSET:
-				ft_fprintf(stderr, "(%s %s)\n", errors[meta->errcode], meta->ar_member);
-				break;
-			case E_LOADOFF:
-				ft_fprintf(stderr, "(load command %u %s", meta->k_command + 1, errors[meta->errcode]);
-				break;
-			case E_SEGOFF:
-				ft_fprintf(stderr, "(load command %u %s in %s %s", meta->k_command, errors[meta->errcode],
-						segcodes[meta->command], XTEND);
-				break;
-			case E_FATOFF:
-				ft_fprintf(stderr, "(%s cputype (%d) cpusubtype (%d) %s", errors[meta->errcode],
-						(*meta->nxArchInfo)->cputype, (*meta->nxArchInfo)->cpusubtype, XTEND);
-				break;
-			case E_SYMSTRX:
-			default:
-				ft_fprintf(stderr, "%s: %d past the end of string table, for symbol at index %u\n",
-						errors[meta->errcode], meta->n_strindex, meta->k_strindex);
-		}
+	ft_fprintf(stderr, "%s: \'%s\': %s %s ", meta->bin, meta->path, errors[0], filecodes[meta->type]);
+	switch (meta->errcode) {
+		case E_INV4L:
+			ft_fprintf(stderr, "(load command %u %s %d)\n", meta->k_command, errors[meta->errcode], meta->arch ? 8 : 4);
+			break;
+		case E_ARFMAG:
+			ft_fprintf(stderr, "(%s %s values for the archive member header for %s)\n", errors[meta->errcode],
+					STR(ARFMAG), meta->ar_member);
+			break;
+		case E_AROFFSET:
+			ft_fprintf(stderr, "(%s %s)\n", errors[meta->errcode], meta->ar_member);
+			break;
+		case E_LOADOFF:
+			ft_fprintf(stderr, "(load command %u %s", meta->k_command + 1, errors[meta->errcode]);
+			break;
+		case E_SEGOFF:
+			ft_fprintf(stderr, "(load command %u %s in %s %s", meta->k_command, errors[meta->errcode],
+					segcodes[meta->command], XTEND);
+			break;
+		case E_FATOFF:
+			ft_fprintf(stderr, "(%s cputype (%d) cpusubtype (%d) %s", errors[meta->errcode],
+					(*meta->nxArchInfo)->cputype, (*meta->nxArchInfo)->cpusubtype, XTEND);
+			break;
+		case E_SYMSTRX:
+		default:
+			ft_fprintf(stderr, "%s: %d past the end of string table, for symbol at index %u\n",
+					errors[meta->errcode], meta->n_strindex, meta->k_strindex);
 	}
 
 	return EXIT_FAILURE;
@@ -316,15 +318,14 @@ process_archive (t_ofile *ofile, t_object *object, t_meta *meta, size_t *offset)
 	}
 
 	/* Adujst size if name is EFMT1 */
-	object->size -= (size_t)name_size;
-
 	if (*offset + object->size > ofile->size) {
 
 		meta->errcode = E_AROFFSET;
 		retcode = EXIT_FAILURE;
 	}
 
-	*offset += object->size + name_size;
+	*offset += object->size;
+	object->size -= (size_t)name_size;
 	meta->ar_member = ft_strdup(object->name);
 	return retcode;
 }
