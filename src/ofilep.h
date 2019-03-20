@@ -18,23 +18,31 @@ enum                    e_errcode {
     E_ARFMAG,
     E_AROFFSET,
     E_LOADOFF,
+    E_SECTOFF,
     E_SEGOFF,
     E_FATOFF,
     E_SYMSTRX
 };
 
+enum                    e_obin {
+    FT_NM,
+    FT_OTOOL
+};
 
 enum                    e_opts {
     ARCH_OUTPUT = (1 << 0),
     DUMP_ALL_ARCH = (1 << 1),
     NM_a = (1 << 2),
-    NM_j = (1 << 3),
-    NM_n = (1 << 4),
-    NM_p = (1 << 5),
-    NM_r = (1 << 6),
-    OTOOL_d = (1 << 7),
-    OTOOL_h = (1 << 8),
-    OTOOL_t = (1 << 9)
+    NM_g = (1 << 3),
+    NM_j = (1 << 4),
+    NM_n = (1 << 5),
+    NM_p = (1 << 6),
+    NM_r = (1 << 7),
+    NM_u = (1 << 8),
+    NM_U = (1 << 9),
+    OTOOL_d = (1 << 10),
+    OTOOL_h = (1 << 11),
+    OTOOL_t = (1 << 12)
 };
 
 enum                    e_type {
@@ -52,7 +60,7 @@ typedef struct          s_object {
     bool                is_cigam;
     bool                fat_64;
     bool                fat_cigam;
-    uint32_t            k_sect;
+    uint8_t             k_sect;
 }                       t_object;
 
 typedef struct          s_ofile {
@@ -69,20 +77,15 @@ typedef struct          s_meta {
     const char          *ar_member;
     const NXArchInfo    **nxArchInfo;
     uint8_t             errcode: 4;
-    uint8_t             type: 3;
+    uint8_t             type: 2;
+    uint8_t             obin: 1;
     bool                arch;
     uint32_t            k_command;
     uint32_t            k_strindex;
-    union {
-        uint32_t        __n_command;
-        int             __n_strindex;
-    }                   n_err;
+    int                 n_strindex;
     uint32_t            command;
     int                 (*reader[])(t_ofile *, t_object *, struct s_meta *, size_t);
 }                       t_meta;
-
-# define n_command      n_err.__n_command
-# define n_strindex     n_err.__n_strindex
 
 int                     open_file(t_ofile *ofile, t_meta *meta);
 int                     printerr (const t_meta *meta);

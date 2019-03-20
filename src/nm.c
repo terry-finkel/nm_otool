@@ -17,20 +17,7 @@ struct              s_nosect {
         [N_UNDF] = {"", 'U'}
 };
 
-struct              s_symbols {
-    const char      *segname;
-    const char      *sectname;
-    char            letter;
-};
-
-t_vary              g_vary_stack = {NULL, 0, 0, sizeof(struct s_symbols *)};
-t_vary              *g_vary = &g_vary_stack;
-
-static void
-symbol_cleanup (void *data) {
-
-    ft_memdtor((void **)data);
-}
+char                g_symbols[UINT8_MAX];
 
 static int
 numerical_sort (const void *restrict a, const void *restrict b) {
@@ -44,28 +31,38 @@ regular_sort (const void *restrict a, const void *restrict b) {
     return ft_strcmp(((t_entry *)a)->name, ((t_entry *)b)->name) > 0;
 }
 
+static bool
+is_common (const uint8_t n_type, const uint64_t n_value) {
+
+    return (n_type & N_TYPE) == N_UNDF && (n_type & N_EXT) != 0 && n_value != 0;
+}
+
 static void
 output (t_ofile *ofile, const t_object *object, const t_entry *entry) {
 
-    if ((ofile->opt & NM_j) == 0) {
+    const uint8_t type = (uint8_t)(entry->n_type & N_TYPE);
 
-        if ((entry->n_type & N_TYPE) != N_UNDF)
+    /* If one of these two options is specified, we need merely to display the name. */
+    if ((ofile->opt & NM_j) == 0 && (ofile->opt & NM_u) == 0) {
+
+        /* Only retrieve the type from symbols if the symbol belongs to a section. */
+        const int letter = (type != N_UNDF && type != N_ABS && type != N_INDR)
+                ? g_symbols[entry->n_sect]
+                : is_common(entry->n_type, entry->n_value) ? 'C' : nosect[type].letter;
+
+        if (type != N_UNDF || letter == 'C') {
             ft_dstrfpush(ofile->buffer, "%.*lx", (object->is_64 ? 16 : 8), entry->n_value);
+        } else {
+            ft_dstrfpush(ofile->buffer, "%*c", (object->is_64 ? 16 : 8), ' ');
+        }
 
-        else ft_dstrfpush(ofile->buffer, "%*c", (object->is_64 ? 16 : 8), ' ');
+        ft_dstrfpush(ofile->buffer, " %c ", ((entry->n_type & N_EXT) == 0 ? ft_tolower(letter) : letter));
+
+        /* N_STAB debugging symbols detail. */
+        if (ofile->opt & NM_a && entry->n_type & N_STAB) ft_dstrfpush(ofile->buffer, "%.2u", entry->n_sect);
     }
 
-    char letter;
-    if (entry->n_sect == NO_SECT || (entry->n_type & N_TYPE) == N_ABS || (entry->n_type & N_TYPE) == N_INDR)
-        letter = nosect[entry->n_type & N_TYPE].letter;
-
-    else letter = ((struct s_symbols **)g_vary->buff)[entry->n_sect - 1]->letter;
-
-    ft_dstrfpush(ofile->buffer, " %c ", ((entry->n_type & N_EXT) == 0 ? ft_tolower(letter) : letter));
-
-    if (ofile->opt & NM_a && entry->n_type & N_STAB) ft_dstrfpush(ofile->buffer, "%.2u", entry->n_sect);
-
-    ft_dstrfpush(ofile->buffer, " %s\n", entry->name);
+    ft_dstrfpush(ofile->buffer, "%s\n", entry->name);
 }
 
 static int
@@ -92,25 +89,40 @@ symtab (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
             return EXIT_FAILURE;
         }
 
+        /* Increment the offset in case our symbol should not be inserted in the linked list. */
+        offset += (object->is_64 ? sizeof(struct nlist_64) : sizeof(struct nlist));
+
         t_entry entry = {
                 .name = object->object + stroff + oswap_32(object, nlist->n_un.n_strx),
                 .n_sect = nlist->n_sect,
                 .n_type = nlist->n_type,
                 .n_value = (object->is_64
-                        ? oswap_64(object, nlist->n_value)
-                        : oswap_32(object, ((struct nlist *)nlist)->n_value))
+                            ? oswap_64(object, nlist->n_value)
+                            : oswap_32(object, ((struct nlist *)nlist)->n_value))
         };
+
+        /*
+           Only insert the symbol in the linked list if the command line options match.
+            -a: display N_STAB debugging entries
+            -h: only display external symbols
+            -u: only display undefined symbols
+            -U: do not display undefined symbols
+        */
+
+        if ((nlist->n_type & N_STAB) && (ofile->opt & NM_a) == 0) continue;
+        if ((nlist->n_type & N_EXT) == 0 && ofile->opt & NM_g) continue;
+
+        /* Common symbols have the undefined bit set so we need to check for them with the -u amd -U option. */
+        const bool common = is_common(entry.n_type, entry.n_value);
+        if (ofile->opt & NM_u && ((nlist->n_type & N_TYPE) != N_UNDF || common == true)) continue;
+        if ((nlist->n_type & N_TYPE) == N_UNDF && common == false && ofile->opt & NM_U) continue;
 
         t_list *link = ft_lstctor(&entry, sizeof(entry));
 
-        if (ofile->opt & NM_a || (nlist->n_type & N_STAB) == 0) {
-
-            if (ofile->opt & NM_n) ft_lstinsert(&list, link, numerical_sort, (ofile->opt & NM_r ? E_REV : E_REG));
-            else if (ofile->opt & NM_p) ft_lstappend(&list, link);
-            else ft_lstinsert(&list, link, regular_sort, (ofile->opt & NM_r ? E_REV : E_REG));
-        }
-
-        offset += (object->is_64 ? sizeof(struct nlist_64) : sizeof(struct nlist));
+        /* Insert the link in our linked list depending on sorting option. */
+        if (ofile->opt & NM_n) ft_lstinsert(&list, link, numerical_sort, (ofile->opt & NM_r ? E_REV : E_REG));
+        else if (ofile->opt & NM_p) ft_lstappend(&list, link);
+        else ft_lstinsert(&list, link, regular_sort, (ofile->opt & NM_r ? E_REV : E_REG));
     }
 
     /* Go through out linked list to print the sorted symbols. Clean the list while we're at it. */
@@ -123,27 +135,7 @@ symtab (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         list = tmp;
     }
 
-    /* We need to clear our symbols array before returning in case of an archive or fat file. */
-    ft_varyclr(g_vary, (t_vdtor)symbol_cleanup);
-
     return EXIT_SUCCESS;
-}
-
-static void
-populate_symbols (t_object *object, const char *restrict segname, const char *restrict sectname) {
-
-    struct s_symbols *symbols = ft_malloc(sizeof *symbols);
-    symbols->sectname = sectname;
-    symbols->segname = segname;
-
-    if (ft_strequ(sectname, SECT_BSS)) symbols->letter = 'B';
-    else if (ft_strequ(sectname, SECT_COMMON)) symbols->letter = 'C';
-    else if (ft_strequ(sectname, SECT_DATA)) symbols->letter = 'D';
-    else if (ft_strequ(sectname, SECT_TEXT)) symbols->letter = 'T';
-    else symbols->letter = 'S';
-
-    *(struct s_symbols **)ft_varypush(g_vary) = symbols;
-    object->k_sect += 1;
 }
 
 static int
@@ -166,7 +158,12 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         const struct section *section = (struct section *)opeek(object, offset, sizeof *section);
         if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
 
-        populate_symbols(object, section->segname, section->sectname);
+        if (ft_strequ(section->sectname, SECT_BSS)) g_symbols[object->k_sect] = 'B';
+        else if (ft_strequ(section->sectname, SECT_DATA)) g_symbols[object->k_sect] = 'D';
+        else if (ft_strequ(section->sectname, SECT_TEXT)) g_symbols[object->k_sect] = 'T';
+        else g_symbols[object->k_sect] = 'S';
+
+        object->k_sect += 1;
         offset += sizeof *section;
     }
 
@@ -193,7 +190,12 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         const struct section_64 *section = (struct section_64 *)opeek(object, offset, sizeof *section);
         if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
 
-        populate_symbols(object, section->segname, section->sectname);
+        if (ft_strequ(section->sectname, SECT_BSS)) g_symbols[object->k_sect] = 'B';
+        else if (ft_strequ(section->sectname, SECT_DATA)) g_symbols[object->k_sect] = 'D';
+        else if (ft_strequ(section->sectname, SECT_TEXT)) g_symbols[object->k_sect] = 'T';
+        else g_symbols[object->k_sect] = 'S';
+
+        object->k_sect += 1;
         offset += sizeof *section;
     }
 
@@ -203,10 +205,10 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 int
 main (int argc, const char *argv[]) {
 
-    int             index = 1, retcode = EXIT_SUCCESS;
+    int             index = 1;
     static t_dstr   buffer;
     static t_meta   meta = {
-            .n_command = LC_SEGMENT_64 + 1,
+            .obin = FT_NM,
             .errcode = E_RRNO,
             .type = E_MACHO,
             .reader = {
@@ -221,11 +223,15 @@ main (int argc, const char *argv[]) {
             .opt = 0
     };
     const t_opt      opts[] = {
-            {FT_OPT_BOOLEAN, 'a', "all", &ofile.opt, "Display all symbol table entries, including those inserted for "
-                "use by debuggers.", NM_a},
-            {FT_OPT_BOOLEAN, 'n', "num", &ofile.opt, "Sort numerically rather than alphabetically.", NM_n},
-            {FT_OPT_BOOLEAN, 'p', "num", &ofile.opt, "Don't sort; display in symbol-table order.", NM_p},
-            {FT_OPT_BOOLEAN, 'r', "num", &ofile.opt, "Sort in reverse order.", NM_r},
+            {FT_OPT_BOOLEAN, 'a', "all-symbols", &ofile.opt, "Display all symbol table entries, including those "
+                "inserted for use by debuggers.", NM_a},
+            {FT_OPT_BOOLEAN, 'g', "only-globals", &ofile.opt, "Display only global (external) symbols.", NM_g},
+            {FT_OPT_BOOLEAN, 'j', "just-symbol", &ofile.opt, "Just display the symbol names (no value or type).", NM_j},
+            {FT_OPT_BOOLEAN, 'n', "numerical-sort", &ofile.opt, "Sort numerically rather than alphabetically.", NM_n},
+            {FT_OPT_BOOLEAN, 'p', "no-sort", &ofile.opt, "Don't sort; display in symbol-table order.", NM_p},
+            {FT_OPT_BOOLEAN, 'r', "reverse-sort", &ofile.opt, "Sort in reverse order.", NM_r},
+            {FT_OPT_BOOLEAN, 'u', "only-undefined", &ofile.opt, "Display only undefined symbols.", NM_u},
+            {FT_OPT_BOOLEAN, 'U', "no-undefined", &ofile.opt, "Don't display undefined symbols.", NM_U},
             {FT_OPT_STRING, 'A', "arch", &ofile.arch, "Specifies the architecture of the file to display when the file "
                 "is a fat binary. \"all\" can be specified to display all architectures in the file. The default is to "
                 "display only the host architecture.", 0},
@@ -266,10 +272,10 @@ main (int argc, const char *argv[]) {
         meta.path = argv[index];
         if (open_file(&ofile, &meta) != EXIT_SUCCESS) {
 
-            retcode = EXIT_FAILURE;
             printerr(&meta);
+            return EXIT_FAILURE;
         }
     }
 
-    return retcode;
+    return EXIT_SUCCESS;
 }

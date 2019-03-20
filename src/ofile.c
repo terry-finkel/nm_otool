@@ -6,11 +6,10 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-
+#define ERR_XTEND "extends past the end of the file)\n"
 #define SAR_EFMT1 3
 #define STRINGIFY(x) #x
 #define STR(x) STRINGIFY(x)
-#define XTEND "extends past the end of the file)\n"
 
 static int              dispatch(t_ofile * ofile, t_object *object, t_meta *meta);
 
@@ -22,6 +21,7 @@ static const char       *errors[] = {
         [E_ARFMAG] = "terminator characters in archive member not the correct",
         [E_AROFFSET] = "offset to next archive member past the end of the archive after member",
         [E_LOADOFF] = "extends past the end all load commands in the file)\n",
+        [E_SECTOFF] = "offset field plus size field of section",
         [E_SEGOFF] = "fileoff field plus filesize field",
         [E_FATOFF] = "offset plus size of",
         [E_SYMSTRX] = "bad string table index"
@@ -74,17 +74,21 @@ printerr (const t_meta *meta) {
         case E_LOADOFF:
             ft_fprintf(stderr, "(load command %u %s", meta->k_command + 1, errors[meta->errcode]);
             break;
+        case E_SECTOFF:
+            ft_fprintf(stderr, "(%s %u in %s command %u %s", errors[meta->errcode], meta->k_strindex,
+                    segcodes[meta->command], meta->k_command, ERR_XTEND);
+            break;
         case E_SEGOFF:
             ft_fprintf(stderr, "(load command %u %s in %s %s", meta->k_command, errors[meta->errcode],
-                    segcodes[meta->command], XTEND);
+                    segcodes[meta->command], ERR_XTEND);
             break;
         case E_FATOFF:
             ft_fprintf(stderr, "(%s cputype (%d) cpusubtype (%d) %s", errors[meta->errcode],
-                    (*meta->nxArchInfo)->cputype, (*meta->nxArchInfo)->cpusubtype, XTEND);
+                    (*meta->nxArchInfo)->cputype, (*meta->nxArchInfo)->cpusubtype, ERR_XTEND);
             break;
         case E_SYMSTRX:
         default:
-            ft_fprintf(stderr, "%s: %d past the end of string table, for symbol at index %u\n",
+            ft_fprintf(stderr, "(%s: %d past the end of string table, for symbol at index %u)\n",
                     errors[meta->errcode], meta->n_strindex, meta->k_strindex);
     }
 
@@ -143,10 +147,10 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
         const struct load_command *loader = (struct load_command *)opeek(object, offset, sizeof *loader);
         if (loader == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
 
-        const uint32_t command = oswap_32(object, loader->cmd);
+        meta->command = oswap_32(object, loader->cmd);
         const uint32_t cmdsize = oswap_32(object, loader->cmdsize);
 
-        /* Various command checks. */
+        /* Various command loader checks. */
         if (offset + cmdsize > object->size) return (meta->errcode = E_LOADOFF), EXIT_FAILURE;
         if (cmdsize % (object->is_64 ? 8 : 4)) {
 
@@ -162,19 +166,20 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
         }
 
         /* Save the offset of LC_SYMTAB to use it later. */
-        if (command == LC_SYMTAB) symtab_offset = offset;
+        if (meta->command == LC_SYMTAB) symtab_offset = offset;
 
-        /* We run through segments first as we need to map their number for nm. */
-        else if (command < meta->n_command && meta->reader[command]
-        && meta->reader[command](ofile, object, meta, offset) != EXIT_SUCCESS) return EXIT_FAILURE;
+        /* We run through segments (and only the segments) first as we need to map their number for nm. */
+        else if (meta->command <= LC_SEGMENT_64 && meta->reader[meta->command]
+        && meta->reader[meta->command](ofile, object, meta, offset) != EXIT_SUCCESS) return EXIT_FAILURE;
 
         offset += oswap_32(object, loader->cmdsize);
     }
 
     if (symtab_offset == 0) return EXIT_FAILURE; /* E_RRNO */
 
-    /* Go through LC_SYMTAB. For otool, this will just to ensure the object file is valid. */
-    if (meta->reader[LC_SYMTAB](ofile, object, meta, symtab_offset) != EXIT_SUCCESS) return EXIT_FAILURE;
+    /* Go through LC_SYMTAB. For otool, and only if -t or -d is specified, this will prevent dumping a corrupted file. */
+    if ((meta->obin == FT_NM || (meta->obin == FT_OTOOL && (ofile->opt & OTOOL_d || ofile->opt & OTOOL_t)))
+    && meta->reader[LC_SYMTAB](ofile, object, meta, symtab_offset) != EXIT_SUCCESS) return EXIT_FAILURE;
 
     if (ofile->opt & OTOOL_h) header_dump(ofile, object);
 

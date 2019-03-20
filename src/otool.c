@@ -30,12 +30,6 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
     struct segment_command *segment = (struct segment_command *)opeek(object, offset, sizeof *segment);
     if (segment == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
-    if (oswap_32(object, segment->fileoff) + oswap_32(object, segment->filesize) > object->size) {
-
-        meta->errcode = E_SEGOFF;
-        meta->command = oswap_32(object, segment->cmd);
-        return EXIT_FAILURE;
-    }
 
     offset += sizeof *segment;
     const uint32_t nsects = oswap_32(object, segment->nsects);
@@ -43,6 +37,12 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
         const struct section *section = (struct section *)opeek(object, offset, sizeof *section);
         if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
+        if (oswap_32(object, section->offset) + oswap_32(object, section->size) > object->size) {
+
+            meta->errcode = E_SECTOFF;
+            meta->k_strindex = k;
+            return EXIT_FAILURE;
+        }
         if ((ft_strequ(section->segname, SEG_TEXT) && ft_strequ(section->sectname, SECT_TEXT) && ofile->opt & OTOOL_t)
         || (ft_strequ(section->segname, SEG_DATA) && ft_strequ(section->sectname, SECT_DATA) && ofile->opt & OTOOL_d)) {
 
@@ -54,6 +54,13 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         offset += sizeof *section;
     }
 
+    if (oswap_32(object, segment->fileoff) + oswap_32(object, segment->filesize) > object->size) {
+
+        meta->errcode = E_SEGOFF;
+        meta->command = oswap_32(object, segment->cmd);
+        return EXIT_FAILURE;
+    }
+
     return EXIT_SUCCESS;
 }
 
@@ -62,12 +69,6 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
     struct segment_command_64 *segment = (struct segment_command_64 *)(object->object + offset);
     if (segment == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
-    if (oswap_64(object, segment->fileoff) + oswap_64(object, segment->filesize) > object->size) {
-
-        meta->errcode = E_SEGOFF;
-        meta->command = oswap_32(object, segment->cmd);
-        return EXIT_FAILURE;
-    }
 
     offset += sizeof *segment;
     const uint32_t nsects = oswap_32(object, segment->nsects);
@@ -75,6 +76,12 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
         const struct section_64 *section = (struct section_64 *)opeek(object, offset, sizeof *section);
         if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
+        if (oswap_32(object, section->offset) + oswap_64(object, section->size) > object->size) {
+
+            meta->errcode = E_SECTOFF;
+            meta->k_strindex = k;
+            return EXIT_FAILURE;
+        }
         if ((ft_strequ(section->segname, SEG_TEXT) && ft_strequ(section->sectname, SECT_TEXT) && ofile->opt & OTOOL_t)
         || (ft_strequ(section->segname, SEG_DATA) && ft_strequ(section->sectname, SECT_DATA) && ofile->opt & OTOOL_d)) {
 
@@ -84,6 +91,13 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         }
 
         offset += sizeof *section;
+    }
+
+    if (oswap_64(object, segment->fileoff) + oswap_64(object, segment->filesize) > object->size) {
+
+        meta->errcode = E_SEGOFF;
+        meta->command = oswap_32(object, segment->cmd);
+        return EXIT_FAILURE;
     }
 
     return EXIT_SUCCESS;
@@ -124,10 +138,10 @@ symtab_check (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 int
 main (int argc, const char *argv[]) {
 
-    int             index = 1, retcode = EXIT_SUCCESS;
+    int             index = 1;
     static t_dstr   buffer;
     static t_meta   meta = {
-            .n_command = LC_SEGMENT_64 + 1,
+            .obin = FT_OTOOL,
             .errcode = E_RRNO,
             .type = E_MACHO,
             .reader = {
@@ -184,10 +198,10 @@ main (int argc, const char *argv[]) {
         meta.path = argv[index];
         if (open_file(&ofile, &meta) != EXIT_SUCCESS) {
 
-            retcode = EXIT_FAILURE;
             printerr(&meta);
+            return EXIT_FAILURE;
         }
     }
 
-    return retcode;
+    return EXIT_SUCCESS;
 }
