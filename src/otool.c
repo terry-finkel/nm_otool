@@ -3,7 +3,7 @@
 
 
 static void
-hexdump (t_ofile *ofile, t_object *object, const uint64_t offset, const uint64_t addr, const uint64_t size) {
+hexdump (t_ofile *ofile, const t_object *object, const uint64_t offset, const uint64_t addr, const uint64_t size) {
 
     uint32_t    *ptr = (uint32_t *)(object->object + offset);
     const bool  dbyte = (object->nxArchInfo == NULL
@@ -11,7 +11,7 @@ hexdump (t_ofile *ofile, t_object *object, const uint64_t offset, const uint64_t
 
     for (uint64_t k = 0; k < size; k++) {
 
-        if (k % 16 == 0) ft_dstrfpush(ofile->buffer, "%0*llx\t", object->is_64 ? 16 : 8, addr + k);
+        if (k % 16 == 0) ft_dstrfpush(ofile->buffer, "%0*llx\t", (object->is_64 ? 16 : 8), addr + k);
         if (dbyte == true) {
 
             ft_dstrfpush(ofile->buffer, "%08x ", oswap_32(object, *(ptr + k / 4)));
@@ -41,7 +41,7 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
     const uint32_t nsects = oswap_32(object, segment->nsects);
     for (uint32_t k = 0; k < nsects; k++) {
 
-        const struct section *section = (struct section *)opeek(object, offset, sizeof *segment);
+        const struct section *section = (struct section *)opeek(object, offset, sizeof *section);
         if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
         if ((ft_strequ(section->segname, SEG_TEXT) && ft_strequ(section->sectname, SECT_TEXT) && ofile->opt & OTOOL_t)
         || (ft_strequ(section->segname, SEG_DATA) && ft_strequ(section->sectname, SECT_DATA) && ofile->opt & OTOOL_d)) {
@@ -73,7 +73,7 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
     const uint32_t nsects = oswap_32(object, segment->nsects);
     for (uint32_t k = 0; k < nsects; k++) {
 
-        const struct section_64 *section = (struct section_64 *)(object->object + offset);
+        const struct section_64 *section = (struct section_64 *)opeek(object, offset, sizeof *section);
         if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
         if ((ft_strequ(section->segname, SEG_TEXT) && ft_strequ(section->sectname, SECT_TEXT) && ofile->opt & OTOOL_t)
         || (ft_strequ(section->segname, SEG_DATA) && ft_strequ(section->sectname, SECT_DATA) && ofile->opt & OTOOL_d)) {
@@ -186,12 +186,7 @@ main (int argc, const char *argv[]) {
 
             retcode = EXIT_FAILURE;
             printerr(&meta);
-        } else {
-
-            ft_fprintf(stdout, ofile.buffer->buff);
         }
-
-        ft_dstrclr(ofile.buffer);
     }
 
     return retcode;

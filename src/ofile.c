@@ -15,16 +15,16 @@
 static int              dispatch(t_ofile * ofile, t_object *object, t_meta *meta);
 
 static const char       *errors[] = {
-        "truncated or malformed",
-        "is not an object file",
-        "invalid magic",
-        "cmdsize not a multiple of",
-        "terminator characters in archive member not the correct",
-        "offset to next archive member past the end of the archive after member",
-        "extends past the end all load commands in the file)\n",
-        "fileoff field plus filesize field",
-        "offset plus size of",
-        "bad string table index"
+        [E_RRNO] = "truncated or malformed",
+        [E_GARBAGE] = "is not an object file",
+        [E_MAGIC] = "invalid magic",
+        [E_INV4L] = "cmdsize not a multiple of",
+        [E_ARFMAG] = "terminator characters in archive member not the correct",
+        [E_AROFFSET] = "offset to next archive member past the end of the archive after member",
+        [E_LOADOFF] = "extends past the end all load commands in the file)\n",
+        [E_SEGOFF] = "fileoff field plus filesize field",
+        [E_FATOFF] = "offset plus size of",
+        [E_SYMSTRX] = "bad string table index"
 };
 
 static const size_t     header_size[] = {
@@ -107,7 +107,7 @@ header_dump (t_ofile *ofile, t_object *object) {
     ft_dstrfpush(ofile->buffer, "Mach header\n");
     ft_dstrfpush(ofile->buffer, "      magic cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags\n");
     ft_dstrfpush(ofile->buffer, "%11#x %7d %10d %5.2#p %11u %5u %10u %#.8x\n", magic, cputype, cpusubtype,
-            caps ? 128 : 0, filetype, ncmds, sizeofcmds, flags);
+            (caps ? 128 : 0), filetype, ncmds, sizeofcmds, flags);
 }
 
 static int
@@ -134,6 +134,10 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
         }
     }
 
+    /* Initialize our section iterator for nm. Starts at 1 as we take into account LC_SYMTAB. */
+    object->k_sect = 1;
+
+    size_t symtab_offset = 0;
     for (meta->k_command = 0; meta->k_command < ncmds; meta->k_command++) {
 
         const struct load_command *loader = (struct load_command *)opeek(object, offset, sizeof *loader);
@@ -157,19 +161,31 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
             return EXIT_FAILURE;
         }
 
-        if (command < meta->n_command && meta->reader[command]
+        /* Save the offset of LC_SYMTAB to use it later. */
+        if (command == LC_SYMTAB) symtab_offset = offset;
+
+        /* We run through segments first as we need to map their number for nm. */
+        else if (command < meta->n_command && meta->reader[command]
         && meta->reader[command](ofile, object, meta, offset) != EXIT_SUCCESS) return EXIT_FAILURE;
 
         offset += oswap_32(object, loader->cmdsize);
     }
 
+    if (symtab_offset == 0) return EXIT_FAILURE; /* E_RRNO */
+
+    /* Go through LC_SYMTAB. For otool, this will just to ensure the object file is valid. */
+    if (meta->reader[LC_SYMTAB](ofile, object, meta, symtab_offset) != EXIT_SUCCESS) return EXIT_FAILURE;
+
     if (ofile->opt & OTOOL_h) header_dump(ofile, object);
 
+    /* Output object and clear buffer. */
+    ft_fprintf(stdout, ofile->buffer->buff);
+    ft_dstrclr(ofile->buffer);
     return EXIT_SUCCESS;
 }
 
 static int
-test_offset_fat_arch (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
+test_offset_fat_arch (t_ofile *ofile, const t_object *object, t_meta *meta, size_t offset) {
 
     if (object->fat_64) {
 
@@ -275,9 +291,6 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
         ofile->arch = object->nxArchInfo->name;
         if (dispatch_fat(ofile, object, meta, fat_arch) != EXIT_SUCCESS) return EXIT_FAILURE;
 
-        /* Output object from the fat file and clear buffer. */
-        ft_fprintf(stdout, ofile->buffer->buff);
-        ft_dstrclr(ofile->buffer);
         offset += sizeof *fat_arch;
     }
 
@@ -354,9 +367,6 @@ read_archive (t_ofile *ofile, t_object *object, t_meta *meta) {
 
         if (process_archive(ofile, object, meta, &offset) != EXIT_SUCCESS) return EXIT_FAILURE;
         if (dispatch(ofile, object, meta) != EXIT_SUCCESS) return EXIT_FAILURE;
-
-        ft_fprintf(stdout, ofile->buffer->buff);
-        ft_dstrclr(ofile->buffer);
     }
 
     return EXIT_SUCCESS;

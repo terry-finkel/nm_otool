@@ -11,7 +11,7 @@
 # define oswap_64(object, item) (object->is_cigam ? OSSwapConstInt64(item) : item)
 
 enum                    e_errcode {
-    E_RRNO = 0,
+    E_RRNO,
     E_GARBAGE,
     E_MAGIC,
     E_INV4L,
@@ -28,9 +28,13 @@ enum                    e_opts {
     ARCH_OUTPUT = (1 << 0),
     DUMP_ALL_ARCH = (1 << 1),
     NM_a = (1 << 2),
-    OTOOL_d = (1 << 3),
-    OTOOL_h = (1 << 4),
-    OTOOL_t = (1 << 5)
+    NM_j = (1 << 3),
+    NM_n = (1 << 4),
+    NM_p = (1 << 5),
+    NM_r = (1 << 6),
+    OTOOL_d = (1 << 7),
+    OTOOL_h = (1 << 8),
+    OTOOL_t = (1 << 9)
 };
 
 enum                    e_type {
@@ -48,6 +52,7 @@ typedef struct          s_object {
     bool                is_cigam;
     bool                fat_64;
     bool                fat_cigam;
+    uint32_t            k_sect;
 }                       t_object;
 
 typedef struct          s_ofile {
@@ -55,7 +60,7 @@ typedef struct          s_ofile {
     const void          *file;
     t_dstr              *buffer;
     size_t              size;
-    uint8_t             opt;
+    uint16_t            opt;
 }                       t_ofile;
 
 typedef struct          s_meta {
