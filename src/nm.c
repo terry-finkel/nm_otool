@@ -1,5 +1,5 @@
 #include "ofilep.h"
-
+#include <mach-o/stab.h>
 
 typedef struct      s_entry {
     const char      *name;
@@ -8,27 +8,65 @@ typedef struct      s_entry {
     uint64_t        n_value;
 }                   t_entry;
 
-struct              s_nosect {
-    const char      *name;
-    const char      letter;
-}                   nosect[] = {
-        [N_ABS] = {"", 'A'},
-        [N_INDR] = {"", 'I'},
-        [N_UNDF] = {"", 'U'}
+static const char   nosect[] = {
+        [N_ABS] = 'A',
+        [N_INDR] = 'I',
+        [N_UNDF] = 'U'
 };
 
-char                g_symbols[UINT8_MAX];
+static const char   *stab[] = {
+        [N_GSYM] = "GSYM",
+        [N_FNAME] = "FNAME",
+        [N_FUN] = "FUN",
+        [N_STSYM] = "STSYM",
+        [N_LCSYM] = "LCSYM",
+        [N_BNSYM] = "BNSYM",
+        [N_AST] = "AST",
+        [N_OPT] = "OPT",
+        [N_RSYM] = "RSYM",
+        [N_SLINE] = "SLINE",
+        [N_ENSYM] = "ENSYM",
+        [N_SSYM] = "SSYM",
+        [N_SO] = "SO",
+        [N_OSO] = "OSO",
+        [N_LSYM] = "LSYM",
+        [N_BINCL] = "BINCL",
+        [N_SOL] = "SOL",
+        [N_PARAMS] = "PARAMS",
+        [N_VERSION] = "VERSION",
+        [N_OLEVEL] = "OLEVEL",
+        [N_PSYM] = "PSYM",
+        [N_EINCL] = "EINCL",
+        [N_ENTRY] = "ENTRY",
+        [N_LBRAC] = "LBRAC",
+        [N_EXCL] = "EXCL",
+        [N_RBRAC] = "RBRAC",
+        [N_BCOMM] = "BCOMM",
+        [N_ECOMM] = "ECOMM",
+        [N_ECOML] = "ECOML",
+        [N_LENG] = "LENG"
+};
 
-static int
-numerical_sort (const void *restrict a, const void *restrict b) {
-
-    return ft_strcmp(((t_entry *)a)->name, ((t_entry *)b)->name) > 0;
-}
+static char         symbols[UINT8_MAX];
 
 static int
 regular_sort (const void *restrict a, const void *restrict b) {
 
-    return ft_strcmp(((t_entry *)a)->name, ((t_entry *)b)->name) > 0;
+    const int retequ = ft_strequ(((t_entry *)a)->name, ((t_entry *)b)->name);
+
+    return retequ
+            ? ((t_entry *)a)->n_value >= ((t_entry *)b)->n_value
+            : ft_strcmp(((t_entry *)a)->name, ((t_entry *)b)->name) > 0;
+}
+
+static int
+numerical_sort (const void *restrict a, const void *restrict b) {
+
+    const int retcmp = ft_strcmp(((t_entry *)a)->name, ((t_entry *)b)->name);
+    
+    return ((t_entry *)a)->n_value == ((t_entry *)b)->n_value && (((t_entry *)a)->n_type & N_TYPE) == N_UNDF
+            ? retcmp > 0
+            : ((t_entry *)a)->n_value >= ((t_entry *)b)->n_value;
 }
 
 static bool
@@ -46,9 +84,12 @@ output (t_ofile *ofile, const t_object *object, const t_entry *entry) {
     if ((ofile->opt & NM_j) == 0 && (ofile->opt & NM_u) == 0) {
 
         /* Only retrieve the type from symbols if the symbol belongs to a section. */
-        const int letter = (type != N_UNDF && type != N_ABS && type != N_INDR)
-                ? g_symbols[entry->n_sect]
-                : is_common(entry->n_type, entry->n_value) ? 'C' : nosect[type].letter;
+        int letter;
+        if (type != N_UNDF && type != N_ABS && type != N_INDR && (entry->n_type & N_STAB) == 0) {
+            letter = symbols[entry->n_sect];
+        } else {
+            letter = is_common(entry->n_type, entry->n_value) ? 'C' : (entry->n_type & N_STAB) ? '-' : nosect[type];
+        }
 
         if (type != N_UNDF || letter == 'C') {
             ft_dstrfpush(ofile->buffer, "%.*lx", (object->is_64 ? 16 : 8), entry->n_value);
@@ -59,7 +100,8 @@ output (t_ofile *ofile, const t_object *object, const t_entry *entry) {
         ft_dstrfpush(ofile->buffer, " %c ", ((entry->n_type & N_EXT) == 0 ? ft_tolower(letter) : letter));
 
         /* N_STAB debugging symbols detail. */
-        if (ofile->opt & NM_a && entry->n_type & N_STAB) ft_dstrfpush(ofile->buffer, "%.2u", entry->n_sect);
+        if (ofile->opt & NM_a && entry->n_type & N_STAB)
+            ft_dstrfpush(ofile->buffer, "%.2x %.4x %5s ", entry->n_sect, entry->n_type == N_OSO, stab[entry->n_type]);
     }
 
     ft_dstrfpush(ofile->buffer, "%s\n", entry->name);
@@ -158,10 +200,10 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         const struct section *section = (struct section *)opeek(object, offset, sizeof *section);
         if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
 
-        if (ft_strequ(section->sectname, SECT_BSS)) g_symbols[object->k_sect] = 'B';
-        else if (ft_strequ(section->sectname, SECT_DATA)) g_symbols[object->k_sect] = 'D';
-        else if (ft_strequ(section->sectname, SECT_TEXT)) g_symbols[object->k_sect] = 'T';
-        else g_symbols[object->k_sect] = 'S';
+        if (ft_strequ(section->sectname, SECT_BSS)) symbols[object->k_sect] = 'B';
+        else if (ft_strequ(section->sectname, SECT_DATA)) symbols[object->k_sect] = 'D';
+        else if (ft_strequ(section->sectname, SECT_TEXT)) symbols[object->k_sect] = 'T';
+        else symbols[object->k_sect] = 'S';
 
         object->k_sect += 1;
         offset += sizeof *section;
@@ -190,10 +232,10 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         const struct section_64 *section = (struct section_64 *)opeek(object, offset, sizeof *section);
         if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
 
-        if (ft_strequ(section->sectname, SECT_BSS)) g_symbols[object->k_sect] = 'B';
-        else if (ft_strequ(section->sectname, SECT_DATA)) g_symbols[object->k_sect] = 'D';
-        else if (ft_strequ(section->sectname, SECT_TEXT)) g_symbols[object->k_sect] = 'T';
-        else g_symbols[object->k_sect] = 'S';
+        if (ft_strequ(section->sectname, SECT_BSS)) symbols[object->k_sect] = 'B';
+        else if (ft_strequ(section->sectname, SECT_DATA)) symbols[object->k_sect] = 'D';
+        else if (ft_strequ(section->sectname, SECT_TEXT)) symbols[object->k_sect] = 'T';
+        else symbols[object->k_sect] = 'S';
 
         object->k_sect += 1;
         offset += sizeof *section;

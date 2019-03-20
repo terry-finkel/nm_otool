@@ -122,24 +122,36 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 
     uint32_t ncmds = oswap_32(object, header->ncmds);
     size_t offset = header_size[object->is_64];
+
+    /* If the object isn't an archive or fat, retrieve the architecture. */
     if (object->nxArchInfo == NULL) object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object,
             (uint32_t)header->cputype), (cpu_subtype_t)oswap_32(object, (uint32_t)header->cpusubtype));
 
-    if ((ofile->opt & OTOOL_d) || (ofile->opt & OTOOL_t)) {
+    /* Output (or not) the name of the file or of the archive / fat. */
+    if (meta->obin == FT_NM || ofile->opt & OTOOL_d || ofile->opt & OTOOL_t) {
+
+        if (meta->obin == FT_NM && (ofile->opt & ARCH_OUTPUT || meta->type == E_AR))
+            ft_dstrfpush(ofile->buffer, "\n");
 
         if (meta->type == E_AR) {
 
             ft_dstrfpush(ofile->buffer, "%s(%s):\n", meta->path, object->name);
         } else {
 
-            ft_dstrfpush(ofile->buffer, "%s", object->name);
+            /* Weird conditions to match the outputs of both nm and otool. */
+            if (meta->obin == FT_OTOOL || (ofile->opt & ARCH_OUTPUT)) ft_dstrfpush(ofile->buffer, "%s", object->name);
             if (ofile->opt & ARCH_OUTPUT) ft_dstrfpush(ofile->buffer, " (architecture %s)", ofile->arch);
-            ft_dstrfpush(ofile->buffer, ":\n");
+            if (meta->obin == FT_OTOOL || (ofile->opt & ARCH_OUTPUT)) ft_dstrfpush(ofile->buffer, ":\n");
         }
     }
 
     /* Initialize our section iterator for nm. Starts at 1 as we take into account LC_SYMTAB. */
     object->k_sect = 1;
+
+    /*
+       Let's go though the commands. We will save the LC_SYMTAB for later as we first need to save the section numbers
+       for nm, and the error checks in LC_SYMTAB are performed after the ones in sections and segments.
+    */
 
     size_t symtab_offset = 0;
     for (meta->k_command = 0; meta->k_command < ncmds; meta->k_command++) {
@@ -168,7 +180,7 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
         /* Save the offset of LC_SYMTAB to use it later. */
         if (meta->command == LC_SYMTAB) symtab_offset = offset;
 
-        /* We run through segments (and only the segments) first as we need to map their number for nm. */
+        /* We run through the segments (and only the segments) first. */
         else if (meta->command <= LC_SEGMENT_64 && meta->reader[meta->command]
         && meta->reader[meta->command](ofile, object, meta, offset) != EXIT_SUCCESS) return EXIT_FAILURE;
 
@@ -178,7 +190,7 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
     if (symtab_offset == 0) return EXIT_FAILURE; /* E_RRNO */
 
     /* Go through LC_SYMTAB. For otool, and only if -t or -d is specified, this will prevent dumping a corrupted file. */
-    if ((meta->obin == FT_NM || (meta->obin == FT_OTOOL && (ofile->opt & OTOOL_d || ofile->opt & OTOOL_t)))
+    if ((meta->obin == FT_NM || ofile->opt & OTOOL_d || ofile->opt & OTOOL_t)
     && meta->reader[LC_SYMTAB](ofile, object, meta, symtab_offset) != EXIT_SUCCESS) return EXIT_FAILURE;
 
     if (ofile->opt & OTOOL_h) header_dump(ofile, object);
@@ -270,7 +282,7 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
         if ((ofile->opt & DUMP_ALL_ARCH) == 0) {
 
             /* The architecture hasn't been found. */
-            ft_printf("%s: file: %s does not contain architecture: %s\n", meta->bin, meta->path, ofile->arch);
+            ft_printf("%s: file: %s does not contain architecture: %s.\n", meta->bin, meta->path, ofile->arch);
             return EXIT_SUCCESS;
         }
 
@@ -363,7 +375,9 @@ read_archive (t_ofile *ofile, t_object *object, t_meta *meta) {
     && ft_strequ(symdef, SYMDEF_64_SORTED) == 0) return EXIT_FAILURE; /* E_RRNO */
 
     /* Archive looks valid so far, let's loop through each of it's member. */
-    ft_dstrfpush(ofile->buffer, "Archive : %s\n", meta->path);
+
+    if (meta->obin == FT_OTOOL) ft_dstrfpush(ofile->buffer, "Archive : %s\n", meta->path);
+
     while (offset != ofile->size) {
 
         /* Restore full object. */

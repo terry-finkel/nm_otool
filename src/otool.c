@@ -1,4 +1,3 @@
-#include <mach-o/nlist.h>
 #include "ofilep.h"
 
 
