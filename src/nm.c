@@ -63,7 +63,7 @@ static int
 numerical_sort (const void *restrict a, const void *restrict b) {
 
     const int retcmp = ft_strcmp(((t_entry *)a)->name, ((t_entry *)b)->name);
-    
+
     return ((t_entry *)a)->n_value == ((t_entry *)b)->n_value && (((t_entry *)a)->n_type & N_TYPE) == N_UNDF
             ? retcmp > 0
             : ((t_entry *)a)->n_value >= ((t_entry *)b)->n_value;
@@ -118,7 +118,7 @@ symtab (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
     t_list *list = NULL;
     offset = oswap_32(object, symtab->symoff);
 
-    for (meta->k_strindex = 0; meta->k_strindex < oswap_32(object, symtab->nsyms); meta->k_strindex++) {
+    for (meta->u_k.k_strindex = 0; meta->u_k.k_strindex < oswap_32(object, symtab->nsyms); meta->u_k.k_strindex++) {
 
         const struct nlist_64 *nlist = (struct nlist_64 *)opeek(object, offset, sizeof *nlist);
         if (nlist == NULL) return EXIT_FAILURE; /* E_RRNO */
@@ -127,7 +127,7 @@ symtab (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         if (stroff + n_strx > object->size) {
 
             meta->errcode = E_SYMSTRX;
-            meta->n_strindex = (int)(stroff + strsize + n_strx - ofile->size);
+            meta->u_n.n_strindex = (int)(stroff + strsize + n_strx - ofile->size);
             return EXIT_FAILURE;
         }
 
@@ -199,6 +199,12 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
         const struct section *section = (struct section *)opeek(object, offset, sizeof *section);
         if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
+        if (oswap_32(object, section->offset) + oswap_32(object, section->size) > object->size) {
+
+            meta->errcode = E_SECTOFF;
+            meta->u_k.k_strindex = k;
+            return EXIT_FAILURE;
+        }
 
         if (ft_strequ(section->sectname, SECT_BSS)) symbols[object->k_sect] = 'B';
         else if (ft_strequ(section->sectname, SECT_DATA)) symbols[object->k_sect] = 'D';
@@ -231,6 +237,12 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
         const struct section_64 *section = (struct section_64 *)opeek(object, offset, sizeof *section);
         if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
+        if (oswap_32(object, section->offset) + oswap_64(object, section->size) > object->size) {
+
+            meta->errcode = E_SECTOFF;
+            meta->u_k.k_strindex = k;
+            return EXIT_FAILURE;
+        }
 
         if (ft_strequ(section->sectname, SECT_BSS)) symbols[object->k_sect] = 'B';
         else if (ft_strequ(section->sectname, SECT_DATA)) symbols[object->k_sect] = 'D';
@@ -287,24 +299,10 @@ main (int argc, const char *argv[]) {
     };
 
     if (argc == index) argv[argc++] = "a.out";
+    if (ofile.arch && ft_strequ(ofile.arch, "all") == 0 && NXGetArchInfoFromName(ofile.arch) == NULL) {
 
-    if (ofile.arch == NULL) {
-
-        ofile.opt |= DUMP_ALL_ARCH;
-        ofile.arch = NXGetLocalArchInfo()->name;
-
-        if (ft_strequ(ofile.arch, "x86_64h")) ofile.arch = "x86_64";
-
-    } else if (ft_strequ(ofile.arch, "all") == 0 && NXGetArchInfoFromName(ofile.arch) == NULL) {
-
-        ft_fprintf(stderr, "%1$s: unknown architecture specification flag: --arch %2$s\n%1$s: known architecture flags"
-                " are:", argv[0], ofile.arch);
-        const NXArchInfo *nxArchInfo = NXGetAllArchInfos();
-
-        for (int k = 0; nxArchInfo[k].name != NULL; k++) ft_fprintf(stderr, " %s", nxArchInfo[k].name);
-
-        ft_fprintf(stderr, "\n");
-        ft_optusage(opts, (char *)argv[0], "[file(s)]", "Dump symbols from [file(s)] (a.out by default).");
+        ft_fprintf(stderr, "%1$s: for the -arch option: Unknown architecture named \'%2$s\'.\n%1$s: %3$s: No "
+                "architecture specified.\n", argv[0], ofile.arch, argv[index]);
         return EXIT_FAILURE;
     }
 

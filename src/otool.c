@@ -39,7 +39,7 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         if (oswap_32(object, section->offset) + oswap_32(object, section->size) > object->size) {
 
             meta->errcode = E_SECTOFF;
-            meta->k_strindex = k;
+            meta->u_k.k_strindex = k;
             return EXIT_FAILURE;
         }
         if ((ft_strequ(section->segname, SEG_TEXT) && ft_strequ(section->sectname, SECT_TEXT) && ofile->opt & OTOOL_t)
@@ -78,7 +78,7 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         if (oswap_32(object, section->offset) + oswap_64(object, section->size) > object->size) {
 
             meta->errcode = E_SECTOFF;
-            meta->k_strindex = k;
+            meta->u_k.k_strindex = k;
             return EXIT_FAILURE;
         }
         if ((ft_strequ(section->segname, SEG_TEXT) && ft_strequ(section->sectname, SECT_TEXT) && ofile->opt & OTOOL_t)
@@ -115,7 +115,7 @@ symtab_check (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
     const uint32_t strsize = oswap_32(object, symtab->strsize);
     offset = oswap_32(object, symtab->symoff);
 
-    for (meta->k_strindex = 0; meta->k_strindex < oswap_32(object, symtab->nsyms); meta->k_strindex++) {
+    for (meta->u_k.k_strindex = 0; meta->u_k.k_strindex < oswap_32(object, symtab->nsyms); meta->u_k.k_strindex++) {
 
         const struct nlist *nlist = (struct nlist *)opeek(object, offset, sizeof *nlist);
         if (nlist == NULL) return EXIT_FAILURE; /* E_RRNO */
@@ -124,7 +124,7 @@ symtab_check (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         if (stroff + n_strx > object->size) {
 
             meta->errcode = E_SYMSTRX;
-            meta->n_strindex = (int)(stroff + strsize + n_strx - ofile->size);
+            meta->u_n.n_strindex = (int)(stroff + strsize + n_strx - ofile->size);
             return EXIT_FAILURE;
         }
 
@@ -170,15 +170,7 @@ main (int argc, const char *argv[]) {
         return EXIT_FAILURE;
     };
 
-    if (ofile.opt < OTOOL_d) return ft_fprintf(stderr, "%s: one of -dht must be specified.\n", argv[0]), EXIT_FAILURE;
-    if (argc == index) argv[argc++] = "a.out";
-
-    if (ofile.arch == NULL) {
-
-        ofile.arch = NXGetLocalArchInfo()->name;
-        if (ft_strequ(ofile.arch, "x86_64h")) ofile.arch = "x86_64";
-        ofile.opt |= DUMP_ALL_ARCH;
-    } else if (ft_strequ(ofile.arch, "all") == 0 && NXGetArchInfoFromName(ofile.arch) == NULL) {
+    if (ofile.arch && ft_strequ(ofile.arch, "all") == 0 && NXGetArchInfoFromName(ofile.arch) == NULL) {
 
         ft_fprintf(stderr, "%1$s: unknown architecture specification flag: --arch %2$s\n%1$s: known architecture flags"
                 " are:", argv[0], ofile.arch);
@@ -190,6 +182,8 @@ main (int argc, const char *argv[]) {
         ft_optusage(opts, (char *)argv[0], "[file(s)]", "Hexdump [file(s)] (a.out by default).");
         return EXIT_FAILURE;
     }
+    if (ofile.opt < OTOOL_d) return ft_fprintf(stderr, "%s: one of -dht must be specified.\n", argv[0]), EXIT_FAILURE;
+    if (argc == index) argv[argc++] = "a.out";
 
     meta.bin = argv[0];
     for ( ; index < argc; index++) {

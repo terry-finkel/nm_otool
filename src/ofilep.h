@@ -17,6 +17,7 @@ enum                    e_errcode {
     E_INV4L,
     E_ARFMAG,
     E_AROFFSET,
+    E_AROVERLAP,
     E_LOADOFF,
     E_SECTOFF,
     E_SEGOFF,
@@ -31,18 +32,17 @@ enum                    e_obin {
 
 enum                    e_opts {
     ARCH_OUTPUT = (1 << 0),
-    DUMP_ALL_ARCH = (1 << 1),
-    NM_a = (1 << 2),
-    NM_g = (1 << 3),
-    NM_j = (1 << 4),
-    NM_n = (1 << 5),
-    NM_p = (1 << 6),
-    NM_r = (1 << 7),
-    NM_u = (1 << 8),
-    NM_U = (1 << 9),
-    OTOOL_d = (1 << 10),
-    OTOOL_h = (1 << 11),
-    OTOOL_t = (1 << 12)
+    NM_a = (1 << 1),
+    NM_g = (1 << 2),
+    NM_j = (1 << 3),
+    NM_n = (1 << 4),
+    NM_p = (1 << 5),
+    NM_r = (1 << 6),
+    NM_u = (1 << 7),
+    NM_U = (1 << 8),
+    OTOOL_d = (1 << 9),
+    OTOOL_h = (1 << 10),
+    OTOOL_t = (1 << 11)
 };
 
 enum                    e_type {
@@ -75,15 +75,20 @@ typedef struct          s_meta {
     const char          *bin;
     const char          *path;
     const char          *ar_member;
-    const NXArchInfo    **nxArchInfo;
     uint8_t             errcode: 4;
     uint8_t             type: 2;
     uint8_t             obin: 1;
     bool                arch;
-    uint32_t            k_command;
-    uint32_t            k_strindex;
-    int                 n_strindex;
-    uint32_t            command;
+    uint32_t            k_command; //TODO put in union
+    union {
+        uint32_t        k_strindex;
+        int             k_cpu;
+    }                   u_k;
+    union {
+        int             n_strindex;
+        int             n_cpu;
+    }                   u_n;
+    uint32_t            command; //TODO put in union
     int                 (*reader[])(t_ofile *, t_object *, struct s_meta *, size_t);
 }                       t_meta;
 
