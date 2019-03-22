@@ -52,21 +52,21 @@ static char         symbols[UINT8_MAX];
 static int
 regular_sort (const void *restrict a, const void *restrict b) {
 
-    const int retequ = ft_strequ(((t_entry *)a)->name, ((t_entry *)b)->name);
+    /* If both entries have the same name, we sort numerically. */
+    if (ft_strequ(((t_entry *)a)->name, ((t_entry *)b)->name))
+        return ((t_entry *)a)->n_value >= ((t_entry *)b)->n_value;
 
-    return retequ
-            ? ((t_entry *)a)->n_value >= ((t_entry *)b)->n_value
-            : ft_strcmp(((t_entry *)a)->name, ((t_entry *)b)->name) > 0;
+    return ft_strcmp(((t_entry *)a)->name, ((t_entry *)b)->name) > 0;
 }
 
 static int
 numerical_sort (const void *restrict a, const void *restrict b) {
 
-    const int retcmp = ft_strcmp(((t_entry *)a)->name, ((t_entry *)b)->name);
+    /* Lexical sort for some entries with the same values. */
+    if (((t_entry *)a)->n_value == ((t_entry *)b)->n_value && (((t_entry *)a)->n_type & N_TYPE) == N_UNDF)
+        return ft_strcmp(((t_entry *)a)->name, ((t_entry *)b)->name) > 0;
 
-    return ((t_entry *)a)->n_value == ((t_entry *)b)->n_value && (((t_entry *)a)->n_type & N_TYPE) == N_UNDF
-            ? retcmp > 0
-            : ((t_entry *)a)->n_value >= ((t_entry *)b)->n_value;
+    return ((t_entry *)a)->n_value >= ((t_entry *)b)->n_value;
 }
 
 static bool
@@ -87,8 +87,12 @@ output (t_ofile *ofile, const t_object *object, const t_entry *entry) {
         int letter;
         if (type != N_UNDF && type != N_ABS && type != N_INDR && (entry->n_type & N_STAB) == 0) {
             letter = symbols[entry->n_sect];
+        } else if (is_common(entry->n_type, entry->n_value)) {
+            letter = 'C';
+        } else if (entry->n_type & N_STAB) {
+            letter = '-';
         } else {
-            letter = is_common(entry->n_type, entry->n_value) ? 'C' : (entry->n_type & N_STAB) ? '-' : nosect[type];
+            letter = nosect[type];
         }
 
         if (type != N_UNDF || letter == 'C') {
