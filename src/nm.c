@@ -199,12 +199,6 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
         const struct section *section = (struct section *)opeek(object, offset, sizeof *section);
         if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
-        if (oswap_32(object, section->offset) + oswap_32(object, section->size) > object->size) {
-
-            meta->errcode = E_SECTOFF;
-            meta->u_k.k_strindex = k;
-            return EXIT_FAILURE;
-        }
 
         if (ft_strequ(section->sectname, SECT_BSS)) symbols[object->k_sect] = 'B';
         else if (ft_strequ(section->sectname, SECT_DATA)) symbols[object->k_sect] = 'D';
@@ -237,12 +231,6 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
         const struct section_64 *section = (struct section_64 *)opeek(object, offset, sizeof *section);
         if (section == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
-        if (oswap_32(object, section->offset) + oswap_64(object, section->size) > object->size) {
-
-            meta->errcode = E_SECTOFF;
-            meta->u_k.k_strindex = k;
-            return EXIT_FAILURE;
-        }
 
         if (ft_strequ(section->sectname, SECT_BSS)) symbols[object->k_sect] = 'B';
         else if (ft_strequ(section->sectname, SECT_DATA)) symbols[object->k_sect] = 'D';

@@ -22,7 +22,6 @@ static const char       *errors[] = {
         [E_AROFFSET] = "offset to next archive member past the end of the archive after member",
         [E_AROVERLAP] = "cputype (0) cpusubtype (0) offset 0 overlaps universal headers",
         [E_LOADOFF] = "extends past the end all load commands in the file",
-        [E_SECTOFF] = "offset field plus size field of section",
         [E_SEGOFF] = "fileoff field plus filesize field",
         [E_FATOFF] = "offset plus size of",
         [E_SYMSTRX] = "bad string table index"
@@ -78,10 +77,6 @@ printerr (const t_meta *meta) {
         case E_LOADOFF:
             ft_fprintf(stderr, "(load command %u %s)\n", meta->k_command + 1, errors[meta->errcode]);
             break;
-        case E_SECTOFF:
-            ft_fprintf(stderr, "(%s %u in %s command %u %s", errors[meta->errcode], meta->u_k.k_strindex,
-                    segcodes[meta->command], meta->k_command, ERR_XTEND);
-            break;
         case E_SEGOFF:
             ft_fprintf(stderr, "(load command %u %s in %s %s", meta->k_command, errors[meta->errcode],
                     segcodes[meta->command], ERR_XTEND);
@@ -96,6 +91,9 @@ printerr (const t_meta *meta) {
                     errors[meta->errcode], meta->u_n.n_strindex, meta->u_k.k_strindex);
     }
 
+    /* Because nm is so fancy, it prints an addional newline for some reason. */
+    if (meta->obin == FT_NM) ft_fprintf(stderr, "\n");
+    
     return EXIT_FAILURE;
 }
 
@@ -149,6 +147,8 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
             if (meta->obin == FT_OTOOL || (ofile->opt & ARCH_OUTPUT)) ft_dstrfpush(ofile->buffer, ":\n");
         }
     }
+
+    meta->type = E_MACHO;
 
     /* Initialize our section iterator for nm. Starts at 1 as we take into account LC_SYMTAB. */
     object->k_sect = 1;
@@ -264,13 +264,18 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
     size_t offset = sizeof *fat_header;
     const uint32_t nfat_arch = oswap_32(object, fat_header->nfat_arch);
 
-    if (meta->type != E_AR) meta->type = E_FAT;
+    /*
+       If the "all" architecture flag hasn't been specified, we first iterate through every available architecture in
+       the fat object in order to find one that matches the specified one if given, or the host one if not.
+    */
 
-    /* One specific architecture has been specified. Let's try to find it. */
-    if (ofile->arch != NULL && ft_strequ(ofile->arch, "all") == 0) {
+    /* If the arch hasn't been specified, we look for a x86_64. */
+    bool no_specific = (ofile->arch == NULL && (ofile->arch = "x86_64"));
+    if (no_specific || ft_strequ(ofile->arch, "all") == 0) {
 
         for (uint32_t k = 0; k < nfat_arch; k++) {
 
+            meta->type = E_FAT;
             const struct fat_arch *fat_arch = (struct fat_arch *)opeek(object, offset, sizeof *fat_arch);
             if (fat_arch == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
 
@@ -284,25 +289,14 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
             offset += object->is_64 ? sizeof(struct fat_arch_64) : sizeof(struct fat_arch);
         }
 
-        /* The architecture hasn't been found. */
-        ft_printf("%s: file: %s does not contain architecture: %s.\n", meta->bin, meta->path, ofile->arch);
-        return EXIT_SUCCESS;
+        /* The architecture hasn't been found. If no specific arch was mentioned, dump everything. */
+        if (no_specific == false) {
 
-    /* If no type has been specified, try to find a best fit. If there is none, we'll just dump everything. */
-    } else if (ofile->arch == NULL) {
+            ft_printf("%s: file: %s does not contain architecture: %s.\n", meta->bin, meta->path, ofile->arch);
+            return EXIT_SUCCESS;
+        }
 
-        object->nxArchInfo = NXGetLocalArchInfo();
-        const cpu_type_t cputype = object->nxArchInfo->cputype;
-        const cpu_subtype_t cpusubtype = object->nxArchInfo->cpusubtype;
-        const void *ptr = ofile->file + offset;
-        const void *best_arch = (object->is_64)
-                ? (void *)NXFindBestFatArch_64(cputype, cpusubtype, (struct fat_arch_64 *)ptr, nfat_arch)
-                : (void *)NXFindBestFatArch(cputype, cpusubtype, (struct fat_arch *)ptr, nfat_arch);
-
-        if (best_arch != NULL)
-            return (test_offset_fat_arch(ofile, object, meta, best_arch) != EXIT_SUCCESS)
-                ? EXIT_FAILURE
-                : dispatch_fat(ofile, object, meta, best_arch);
+        offset = sizeof *fat_header;
     }
 
     /*
@@ -312,6 +306,8 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 
     ofile->opt |= ARCH_OUTPUT;
     for (uint32_t k = 0; k < oswap_32(object, fat_header->nfat_arch); k++) {
+
+        meta->type = E_FAT;
 
         /* Mutate object architecture specifications to treat it as an independent Mach-O file. */
         const struct fat_arch *fat_arch = (struct fat_arch *)opeek(object, offset, sizeof *fat_arch);
@@ -323,7 +319,15 @@ read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
         if (object->nxArchInfo == NULL) return (meta->errcode = E_AROVERLAP), EXIT_FAILURE;
         if (test_offset_fat_arch(ofile, object, meta, fat_arch) != EXIT_SUCCESS) return EXIT_FAILURE;
         ofile->arch = object->nxArchInfo->name;
-        if (dispatch_fat(ofile, object, meta, fat_arch) != EXIT_SUCCESS) return EXIT_FAILURE;
+
+        /* In case of an error, nm displays the error but keeps dumping. otool terminates immediately. */
+        if (dispatch_fat(ofile, object, meta, fat_arch) != EXIT_SUCCESS) {
+
+            if (meta->obin == FT_OTOOL) return EXIT_FAILURE;
+
+            printerr(meta);
+            ft_dstrclr(ofile->buffer);
+        }
 
         offset += sizeof *fat_arch;
     }
@@ -396,6 +400,8 @@ read_archive (t_ofile *ofile, t_object *object, t_meta *meta) {
     if (meta->obin == FT_OTOOL) ft_dstrfpush(ofile->buffer, "Archive : %s\n", meta->path);
 
     while (offset != ofile->size) {
+
+        meta->type = E_AR;
 
         /* Restore full object. */
         object->object = ofile->file;

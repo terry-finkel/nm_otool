@@ -19,7 +19,6 @@ enum                    e_errcode {
     E_AROFFSET,
     E_AROVERLAP,
     E_LOADOFF,
-    E_SECTOFF,
     E_SEGOFF,
     E_FATOFF,
     E_SYMSTRX
