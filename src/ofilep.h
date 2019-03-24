@@ -31,17 +31,18 @@ enum                    e_obin {
 
 enum                    e_opts {
     ARCH_OUTPUT = (1 << 0),
-    NM_a = (1 << 1),
-    NM_g = (1 << 2),
-    NM_j = (1 << 3),
-    NM_n = (1 << 4),
-    NM_p = (1 << 5),
-    NM_r = (1 << 6),
-    NM_u = (1 << 7),
-    NM_U = (1 << 8),
-    OTOOL_d = (1 << 9),
-    OTOOL_h = (1 << 10),
-    OTOOL_t = (1 << 11)
+    NAME_OUTPUT = (1 << 1),
+    NM_a = (1 << 2),
+    NM_g = (1 << 3),
+    NM_j = (1 << 4),
+    NM_n = (1 << 5),
+    NM_p = (1 << 6),
+    NM_r = (1 << 7),
+    NM_u = (1 << 8),
+    NM_U = (1 << 9),
+    OTOOL_d = (1 << 10),
+    OTOOL_h = (1 << 11),
+    OTOOL_t = (1 << 12)
 };
 
 enum                    e_type {

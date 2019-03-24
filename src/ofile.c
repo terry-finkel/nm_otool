@@ -132,7 +132,7 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
     /* Output (or not) the name of the file or of the archive / fat. */
     if (meta->obin == FT_NM || ofile->opt & OTOOL_d || ofile->opt & OTOOL_t) {
 
-        if (meta->obin == FT_NM && (ofile->opt & ARCH_OUTPUT || meta->type == E_AR))
+        if (meta->obin == FT_NM && (ofile->opt & NAME_OUTPUT || ofile->opt & ARCH_OUTPUT || meta->type == E_AR))
             ft_dstrfpush(ofile->buffer, "\n");
 
         if (meta->type == E_AR) {
@@ -141,10 +141,10 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
         } else {
 
             /* Weird conditions to match the outputs of both nm and otool. */
-            if (meta->obin == FT_OTOOL || (ofile->opt & ARCH_OUTPUT)) ft_dstrfpush(ofile->buffer, "%s", object->name);
+            if (ofile->opt & NAME_OUTPUT || ofile->opt & ARCH_OUTPUT) ft_dstrfpush(ofile->buffer, "%s", object->name);
             if (ofile->opt & ARCH_OUTPUT) ft_dstrfpush(ofile->buffer, " (%sarchitecture %s)",
                     (meta->obin == FT_NM) ? "for " : "", ofile->arch);
-            if (meta->obin == FT_OTOOL || (ofile->opt & ARCH_OUTPUT)) ft_dstrfpush(ofile->buffer, ":\n");
+            if (ofile->opt & NAME_OUTPUT || ofile->opt & ARCH_OUTPUT) ft_dstrfpush(ofile->buffer, ":\n");
         }
     }
 

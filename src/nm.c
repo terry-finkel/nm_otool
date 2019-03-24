@@ -298,16 +298,21 @@ main (int argc, const char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    /* Only output file name if there are multiple files. */
+    if (argc - 1 > index) ofile.opt |= NAME_OUTPUT;
+
+    int retcode = EXIT_SUCCESS;
     meta.bin = argv[0];
     for ( ; index < argc; index++) {
 
         meta.path = argv[index];
         if (open_file(&ofile, &meta) != EXIT_SUCCESS) {
 
+            /* nm doesn't return if the binary is not a valid object. */
             printerr(&meta);
-            return EXIT_FAILURE;
+            retcode = EXIT_FAILURE;
         }
     }
 
-    return EXIT_SUCCESS;
+    return retcode;
 }

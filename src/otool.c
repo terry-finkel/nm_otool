@@ -142,7 +142,7 @@ main (int argc, const char *argv[]) {
     t_ofile         ofile = {
             .arch = NULL,
             .buffer = &buffer,
-            .opt = 0
+            .opt = NAME_OUTPUT
     };
     const t_opt     opts[] = {
             {FT_OPT_BOOLEAN, 'd', "data", &ofile.opt, "Display the contents of the (__DATA, __data) section.", OTOOL_d},
