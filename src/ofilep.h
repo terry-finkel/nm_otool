@@ -58,8 +58,6 @@ typedef struct          s_object {
     const NXArchInfo    *nxArchInfo;
     bool                is_64;
     bool                is_cigam;
-    bool                fat_64;
-    bool                fat_cigam;
     uint8_t             k_sect;
 }                       t_object;
 

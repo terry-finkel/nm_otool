@@ -42,13 +42,13 @@ vpath %.c $(SRCDIR)
 ##    RULES    ##
 #################
 
-all: $(NM) $(OTOOL)
+all: $(LFT) $(NM) $(OTOOL)
 
-$(NM): $(LFT) $(OBJECTS)
+$(NM): $(OBJECTS)
 	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(NM_SRCS))) -L $(LIBFTDIR) -lft -o $@
 	@printf  "\033[92m\033[1;32mCompiling -------------> \033[91m$(NM)\033[0m\033[1;32m:\033[0m%-15s\033[32m[✔]\033[0m\n"
 
-$(OTOOL): $(LFT) $(OBJECTS)
+$(OTOOL): $(OBJECTS)
 	@$(CC) $(FLAGS) $(O_FLAG) $(patsubst %.c,$(OBJDIR)%.o,$(notdir $(OTOOL_SRCS))) -L $(LIBFTDIR) -lft -o $@
 	@printf  "\033[92m\033[1;32mCompiling -------------> \033[91m$(OTOOL)\033[0m\033[1;32m:\033[0m%-12s\033[32m[✔]\033[0m\n"
 
@@ -76,6 +76,9 @@ fclean: clean
 
 $(LFT):
 	@$(MAKE) fast -C $(LIBFTDIR)
+
+mrproper: fclean
+	@$(MAKE) fclean -C $(LIBFTDIR)
 
 noflags: FLAGS := 
 noflags: re

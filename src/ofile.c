@@ -148,8 +148,6 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
         }
     }
 
-    meta->type = E_MACHO;
-
     /* Initialize our section iterator for nm. Starts at 1 as we take into account LC_SYMTAB. */
     object->k_sect = 1;
 
@@ -208,134 +206,6 @@ read_macho_file (t_ofile *ofile, t_object *object, t_meta *meta) {
 }
 
 static int
-test_offset_fat_arch (t_ofile *ofile, const t_object *object, t_meta *meta, const void *ptr) {
-
-    const uint64_t offset = (object->fat_64)
-            ? oswap_64(object, ((struct fat_arch_64 *)ptr)->offset)
-            : oswap_32(object, ((struct fat_arch *)ptr)->offset);
-
-    const uint64_t size = (object->fat_64)
-            ? oswap_64(object, ((struct fat_arch_64 *)ptr)->size)
-            : oswap_32(object, ((struct fat_arch *)ptr)->size);
-
-    if (offset + size > ofile->size) {
-
-        meta->u_n.n_cpu = object->nxArchInfo->cputype;
-        meta->u_k.k_cpu = object->nxArchInfo->cpusubtype;
-        meta->errcode = E_FATOFF;
-        return EXIT_FAILURE;
-    }
-
-    return EXIT_SUCCESS;
-}
-
-static int
-dispatch_fat (t_ofile *ofile, t_object *object, t_meta *meta, const void *ptr) {
-
-    if (object->fat_64 == false) {
-
-        const struct fat_arch *arch = (struct fat_arch *)ptr;
-        object->object = ofile->file + oswap_32(object, arch->offset);
-        object->size = oswap_32(object, arch->size);
-    } else {
-
-        const struct fat_arch_64 *arch_64 = (struct fat_arch_64 *)ptr;
-        object->object = ofile->file + oswap_64(object, arch_64->offset);
-        object->size = oswap_64(object, arch_64->size);
-    }
-
-    const int retcode = dispatch(ofile, object, meta);
-    object->is_64 = object->fat_64;
-    object->is_cigam = object->fat_cigam;
-    object->object = ofile->file;
-
-    return retcode;
-}
-
-static int
-read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
-
-    struct fat_header *fat_header = (struct fat_header *)opeek(object, 0, sizeof *fat_header);
-    if (fat_header == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
-
-    /* is_64 and is_cigam will be overwritten by architecture files in the fat header, so we store them beforehand. */
-    object->fat_64 = object->is_64;
-    object->fat_cigam = object->is_cigam;
-    size_t offset = sizeof *fat_header;
-    const uint32_t nfat_arch = oswap_32(object, fat_header->nfat_arch);
-
-    /*
-       If the "all" architecture flag hasn't been specified, we first iterate through every available architecture in
-       the fat object in order to find one that matches the specified one if given, or the host one if not.
-    */
-
-    /* If the arch hasn't been specified, we look for a x86_64. */
-    bool no_specific = (ofile->arch == NULL && (ofile->arch = "x86_64"));
-    if (no_specific || ft_strequ(ofile->arch, "all") == 0) {
-
-        for (uint32_t k = 0; k < nfat_arch; k++) {
-
-            meta->type = E_FAT;
-            const struct fat_arch *fat_arch = (struct fat_arch *)opeek(object, offset, sizeof *fat_arch);
-            if (fat_arch == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
-
-            object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)fat_arch->cputype),
-                    (cpu_subtype_t)oswap_32(object, (uint32_t)fat_arch->cpusubtype));
-
-            if (object->nxArchInfo == NULL) return (meta->errcode = E_AROVERLAP), EXIT_FAILURE;
-            if (test_offset_fat_arch(ofile, object, meta, fat_arch) != EXIT_SUCCESS) return EXIT_FAILURE;
-            if (ft_strequ(ofile->arch, object->nxArchInfo->name)) return dispatch_fat(ofile, object, meta, fat_arch);
-
-            offset += object->is_64 ? sizeof(struct fat_arch_64) : sizeof(struct fat_arch);
-        }
-
-        /* The architecture hasn't been found. If no specific arch was mentioned, dump everything. */
-        if (no_specific == false) {
-
-            ft_printf("%s: file: %s does not contain architecture: %s.\n", meta->bin, meta->path, ofile->arch);
-            return EXIT_SUCCESS;
-        }
-
-        offset = sizeof *fat_header;
-    }
-
-    /*
-       If this code is reached, either "all" was specified, or the host architecture wasn't found in the fat file.
-       Either way, we can dump everything.
-    */
-
-    ofile->opt |= ARCH_OUTPUT;
-    for (uint32_t k = 0; k < oswap_32(object, fat_header->nfat_arch); k++) {
-
-        meta->type = E_FAT;
-
-        /* Mutate object architecture specifications to treat it as an independent Mach-O file. */
-        const struct fat_arch *fat_arch = (struct fat_arch *)opeek(object, offset, sizeof *fat_arch);
-        if (fat_arch == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
-
-        object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)fat_arch->cputype),
-                (cpu_subtype_t)oswap_32(object, (uint32_t)fat_arch->cpusubtype));
-
-        if (object->nxArchInfo == NULL) return (meta->errcode = E_AROVERLAP), EXIT_FAILURE;
-        if (test_offset_fat_arch(ofile, object, meta, fat_arch) != EXIT_SUCCESS) return EXIT_FAILURE;
-        ofile->arch = object->nxArchInfo->name;
-
-        /* In case of an error, nm displays the error but keeps dumping. otool terminates immediately. */
-        if (dispatch_fat(ofile, object, meta, fat_arch) != EXIT_SUCCESS) {
-
-            if (meta->obin == FT_OTOOL) return EXIT_FAILURE;
-
-            printerr(meta);
-            ft_dstrclr(ofile->buffer);
-        }
-
-        offset += sizeof *fat_arch;
-    }
-
-    return EXIT_SUCCESS;
-}
-
-static int
 process_archive (t_ofile *ofile, t_object *object, t_meta *meta, size_t *offset) {
 
     int retcode = EXIT_SUCCESS;
@@ -385,15 +255,17 @@ process_archive (t_ofile *ofile, t_object *object, t_meta *meta, size_t *offset)
 static int
 read_archive (t_ofile *ofile, t_object *object, t_meta *meta) {
 
-    meta->type = E_AR;
+    const void *restore = ofile->file;
+    ofile->file = object->object;
     size_t offset = SARMAG;
 
+    if (meta->type != E_FAT) meta->type = E_AR;
     if (process_archive(ofile, object, meta, &offset) != EXIT_SUCCESS) return EXIT_FAILURE;
 
     /* Check SYMDEF validity. */
     const char *symdef = ofile->file + sizeof(struct ar_hdr) + SARMAG;
     if (ft_strequ(symdef, SYMDEF) == 0 && ft_strequ(symdef, SYMDEF_SORTED) == 0 && ft_strequ(symdef, SYMDEF_64) == 0
-    && ft_strequ(symdef, SYMDEF_64_SORTED) == 0) return EXIT_FAILURE; /* E_RRNO */
+        && ft_strequ(symdef, SYMDEF_64_SORTED) == 0) return EXIT_FAILURE; /* E_RRNO */
 
     /* Archive looks valid so far, let's loop through each of it's member. */
 
@@ -401,14 +273,144 @@ read_archive (t_ofile *ofile, t_object *object, t_meta *meta) {
 
     while (offset != ofile->size) {
 
-        meta->type = E_AR;
-
         /* Restore full object. */
         object->object = ofile->file;
         object->size = ofile->size;
 
         if (process_archive(ofile, object, meta, &offset) != EXIT_SUCCESS) return EXIT_FAILURE;
         if (dispatch(ofile, object, meta) != EXIT_SUCCESS) return EXIT_FAILURE;
+    }
+
+    ofile->file = restore;
+    return EXIT_SUCCESS;
+}
+
+static int
+test_offset_fat_arch (t_ofile *ofile, const t_object *object, t_meta *meta, const void *ptr) {
+
+    const uint64_t offset = (object->is_64)
+            ? oswap_64(object, ((struct fat_arch_64 *)ptr)->offset)
+            : oswap_32(object, ((struct fat_arch *)ptr)->offset);
+
+    const uint64_t size = (object->is_64)
+            ? oswap_64(object, ((struct fat_arch_64 *)ptr)->size)
+            : oswap_32(object, ((struct fat_arch *)ptr)->size);
+
+    if (offset + size > ofile->size) {
+
+        meta->u_n.n_cpu = object->nxArchInfo->cputype;
+        meta->u_k.k_cpu = object->nxArchInfo->cpusubtype;
+        meta->errcode = E_FATOFF;
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}
+
+static int
+dispatch_fat (t_ofile *ofile, t_object *object, t_meta *meta, const void *ptr) {
+
+    if (object->is_64 == false) {
+
+        const struct fat_arch *arch = (struct fat_arch *)ptr;
+        object->object = ofile->file + oswap_32(object, arch->offset);
+        object->size = oswap_32(object, arch->size);
+    } else {
+
+        const struct fat_arch_64 *arch_64 = (struct fat_arch_64 *)ptr;
+        object->object = ofile->file + oswap_64(object, arch_64->offset);
+        object->size = oswap_64(object, arch_64->size);
+    }
+
+    /*
+       Endianness and 64 will be overriden by dispatch as the object will be treated anew, we save them to restore
+       them after the object has been processed.
+    */
+
+    const bool fat_is_64 = object->is_64;
+    const bool fat_is_cigam = object->is_cigam;
+    const int retcode = dispatch(ofile, object, meta);
+    object->is_64 = fat_is_64;
+    object->is_cigam = fat_is_cigam;
+    object->object = ofile->file;
+
+    return retcode;
+}
+
+static int
+read_fat_file (t_ofile *ofile, t_object *object, t_meta *meta) {
+
+    meta->type = E_FAT;
+    struct fat_header *fat_header = (struct fat_header *)opeek(object, 0, sizeof *fat_header);
+    if (fat_header == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
+
+    size_t offset = sizeof *fat_header;
+    const uint32_t nfat_arch = oswap_32(object, fat_header->nfat_arch);
+
+    /*
+       If the "all" architecture flag hasn't been specified, we first iterate through every available architecture in
+       the fat object in order to find one that matches the specified one if given, or the host one if not.
+    */
+
+    /* If the arch hasn't been specified, we look for a x86_64. */
+    bool no_specific = (ofile->arch == NULL && (ofile->arch = "x86_64"));
+    if (no_specific || ft_strequ(ofile->arch, "all") == 0) {
+
+        for (uint32_t k = 0; k < nfat_arch; k++) {
+
+            const struct fat_arch *fat_arch = (struct fat_arch *)opeek(object, offset, sizeof *fat_arch);
+            if (fat_arch == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
+
+            object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)fat_arch->cputype),
+                    (cpu_subtype_t)oswap_32(object, (uint32_t)fat_arch->cpusubtype));
+
+            if (object->nxArchInfo == NULL) return (meta->errcode = E_AROVERLAP), EXIT_FAILURE;
+            if (test_offset_fat_arch(ofile, object, meta, fat_arch) != EXIT_SUCCESS) return EXIT_FAILURE;
+            if (ft_strequ(ofile->arch, object->nxArchInfo->name)) return dispatch_fat(ofile, object, meta, fat_arch);
+
+            offset += object->is_64 ? sizeof(struct fat_arch_64) : sizeof(struct fat_arch);
+        }
+
+        /* The architecture hasn't been found. If no specific arch was mentioned, dump everything. */
+        if (no_specific == false) {
+
+            ft_printf("%s: file: %s does not contain architecture: %s.\n", meta->bin, meta->path, ofile->arch);
+            return EXIT_SUCCESS;
+        }
+
+        offset = sizeof *fat_header;
+    }
+
+    /*
+       If this code is reached, either "all" was specified, or the host architecture wasn't found in the fat file.
+       Either way, we can dump everything.
+    */
+
+    ofile->opt |= ARCH_OUTPUT;
+    for (uint32_t k = 0; k < oswap_32(object, fat_header->nfat_arch); k++) {
+
+        /* Mutate object architecture specifications to treat it as an independent Mach-O file. */
+        const struct fat_arch *fat_arch = (struct fat_arch *)opeek(object, offset, sizeof *fat_arch);
+        if (fat_arch == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
+
+        object->nxArchInfo = NXGetArchInfoFromCpuType((cpu_type_t)oswap_32(object, (uint32_t)fat_arch->cputype),
+                (cpu_subtype_t)oswap_32(object, (uint32_t)fat_arch->cpusubtype));
+
+        if (object->nxArchInfo == NULL) return (meta->errcode = E_AROVERLAP), EXIT_FAILURE;
+        if (test_offset_fat_arch(ofile, object, meta, fat_arch) != EXIT_SUCCESS) return EXIT_FAILURE;
+
+        ofile->arch = object->nxArchInfo->name;
+
+        /* In case of an error, nm displays the error but keeps dumping. otool terminates immediately. */
+        if (dispatch_fat(ofile, object, meta, fat_arch) != EXIT_SUCCESS) {
+
+            if (meta->obin == FT_OTOOL) return EXIT_FAILURE;
+
+            printerr(meta);
+            ft_dstrclr(ofile->buffer);
+        }
+
+        offset += sizeof *fat_arch;
     }
 
     return EXIT_SUCCESS;
@@ -428,11 +430,11 @@ dispatch (t_ofile *ofile, t_object *object, t_meta *meta) {
             {0, MH_CIGAM, false, true, read_macho_file},
             {0, MH_MAGIC_64, true, false, read_macho_file},
             {0, MH_CIGAM_64, true, true, read_macho_file},
+            {"!<arch>\n", 0, 0, 0, read_archive},
             {0, FAT_MAGIC, false, false, read_fat_file},
             {0, FAT_CIGAM, false, true, read_fat_file},
             {0, FAT_MAGIC_64, true, false, read_fat_file},
             {0, FAT_CIGAM_64, true, true, read_fat_file},
-            {"!<arch>\n", 0, 0, 0, read_archive},
     };
 
     /* We add 2 to the magic_len as we also need to check for archives. */
@@ -440,8 +442,8 @@ dispatch (t_ofile *ofile, t_object *object, t_meta *meta) {
 
     for (int k = 0; k < magic_len; k++) {
 
-        if (meta->type == E_FAT && k == 4) return (meta->errcode = E_MAGIC), EXIT_FAILURE;
-        if (meta->type == E_AR && k == 8) return (meta->errcode = E_MAGIC), EXIT_FAILURE;
+        if (meta->type == E_AR && k == 4) return (meta->errcode = E_MAGIC), EXIT_FAILURE;
+        if (meta->type == E_FAT && k == 5) return (meta->errcode = E_MAGIC), EXIT_FAILURE;
 
         /* Find the magic number of the object. Then dispatch it to the correct reader. */
         if ((magic[k].arch_magic != NULL && ft_strnequ(magic[k].arch_magic, object->object, SARMAG))
