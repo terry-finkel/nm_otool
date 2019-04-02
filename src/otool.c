@@ -30,6 +30,13 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
     struct segment_command *segment = (struct segment_command *)opeek(object, offset, sizeof *segment);
     if (segment == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
 
+    if (oswap_32(object, segment->fileoff) + oswap_32(object, segment->filesize) > object->size) {
+
+        meta->errcode = E_SEGOFF;
+        meta->command = oswap_32(object, segment->cmd);
+        return EXIT_FAILURE;
+    }
+
     offset += sizeof *segment;
     const uint32_t nsects = oswap_32(object, segment->nsects);
     for (uint32_t k = 0; k < nsects; k++) {
@@ -48,13 +55,6 @@ segment (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         offset += sizeof *section;
     }
 
-    if (oswap_32(object, segment->fileoff) + oswap_32(object, segment->filesize) > object->size) {
-
-        meta->errcode = E_SEGOFF;
-        meta->command = oswap_32(object, segment->cmd);
-        return EXIT_FAILURE;
-    }
-
     return EXIT_SUCCESS;
 }
 
@@ -63,6 +63,13 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 
     struct segment_command_64 *segment = (struct segment_command_64 *)(object->object + offset);
     if (segment == NULL) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
+
+    if (oswap_64(object, segment->fileoff) + oswap_64(object, segment->filesize) > object->size) {
+
+        meta->errcode = E_SEGOFF;
+        meta->command = oswap_32(object, segment->cmd);
+        return EXIT_FAILURE;
+    }
 
     offset += sizeof *segment;
     const uint32_t nsects = oswap_32(object, segment->nsects);
@@ -80,13 +87,6 @@ segment_64 (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
         }
 
         offset += sizeof *section;
-    }
-
-    if (oswap_64(object, segment->fileoff) + oswap_64(object, segment->filesize) > object->size) {
-
-        meta->errcode = E_SEGOFF;
-        meta->command = oswap_32(object, segment->cmd);
-        return EXIT_FAILURE;
     }
 
     return EXIT_SUCCESS;
