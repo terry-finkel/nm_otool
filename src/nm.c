@@ -255,8 +255,6 @@ main (int argc, const char *argv[]) {
     static t_dstr   buffer;
     static t_meta   meta = {
             .obin = FT_NM,
-            .errcode = E_RRNO,
-            .type = E_MACHO,
             .reader = {
                     [LC_SYMTAB] = symtab,
                     [LC_SEGMENT] = segment,
@@ -306,6 +304,8 @@ main (int argc, const char *argv[]) {
     for ( ; index < argc; index++) {
 
         meta.path = argv[index];
+        meta.errcode = E_RRNO;
+        meta.type = E_MACHO;
         if (open_file(&ofile, &meta) != EXIT_SUCCESS) {
 
             /* nm doesn't return if the binary is not a valid object. */

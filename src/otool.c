@@ -127,12 +127,10 @@ symtab_check (t_ofile *ofile, t_object *object, t_meta *meta, size_t offset) {
 int
 main (int argc, const char *argv[]) {
 
-    int             index = 1;
+    int             index = 1, retcode = EXIT_SUCCESS;
     static t_dstr   buffer;
     static t_meta   meta = {
             .obin = FT_OTOOL,
-            .errcode = E_RRNO,
-            .type = E_MACHO,
             .reader = {
                     [LC_SEGMENT] = segment,
                     [LC_SEGMENT_64] = segment_64,
@@ -179,12 +177,16 @@ main (int argc, const char *argv[]) {
     for ( ; index < argc; index++) {
 
         meta.path = argv[index];
+        meta.errcode = E_RRNO;
+        meta.type = E_MACHO;
         if (open_file(&ofile, &meta) != EXIT_SUCCESS) {
 
             printerr(&meta);
-            return EXIT_FAILURE;
+            retcode = EXIT_FAILURE;
+
+            if (meta.errcode == E_RRNO) break;
         }
     }
 
-    return EXIT_SUCCESS;
+    return retcode;
 }

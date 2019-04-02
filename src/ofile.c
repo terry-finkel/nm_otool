@@ -471,10 +471,15 @@ open_file (t_ofile *ofile, t_meta *meta) {
 
     ofile->size = (size_t)stat.st_size;
     if (ofile->size < sizeof(uint32_t)) return (meta->errcode = E_GARBAGE), EXIT_FAILURE;
-    if (stat.st_mode & S_IFDIR) return (errno = EISDIR), EXIT_FAILURE;
+    if (stat.st_mode & S_IFDIR) {
+
+        meta->errcode = E_RRNO;
+        errno = EISDIR;
+        return EXIT_FAILURE;
+    }
 
     ofile->file = mmap(NULL, ofile->size, PROT_READ, MAP_PRIVATE, fd, 0);
-    if (close(fd) == -1 || ofile->file == MAP_FAILED) return EXIT_FAILURE;
+    if (close(fd) == -1 || ofile->file == MAP_FAILED) return EXIT_FAILURE; /* E_RRNO */
 
     /*
        We duplicate the file and the file size into the object structure as well, it will allow us to process FAT
